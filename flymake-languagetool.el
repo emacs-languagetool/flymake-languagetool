@@ -56,6 +56,41 @@
   :safe #'stringp)
 (make-variable-buffer-local 'flymake-languagetool-language)
 
+;;; Core
+
+(defun flymake-languagetool--check-all (source-buffer)
+  "Check grammar for SOURCE-BUFFER document."
+  (let ((check-list '()))
+    (dolist (data flymake-grammarly--point-data)
+      (let* ((pt-beg (flymake-grammarly--grab-info data "highlightBegin"))
+             (pt-end (flymake-grammarly--grab-info data "highlightEnd"))
+             (exp (flymake-grammarly--grab-info data "explanation"))
+             (card-desc (unless exp (flymake-grammarly--grab-info data "cardLayout groupDescription")))
+             (desc (flymake-grammarly--html-to-text (or exp card-desc "")))
+             (type (if exp (if (string-match-p "error" data) :error :warning) :warning)))
+        (push (flymake-make-diagnostic source-buffer (1+ pt-beg) (1+ pt-end) type desc) check-list)))
+    check-list))
+
+;;; Flymake
+
+(defvar flymake-languagetool--report-fnc nil
+  "Record report function/execution.")
+
+(defvar flymake-languagetool--source-buffer nil
+  "Record source check buffer.")
+
+(defun flymake-languagetool--report-once ()
+  "Report with flymake after done requesting."
+  (when (functionp flymake-languagetool--report-fnc)
+    (funcall flymake-languagetool--report-fnc
+             (flymake-languagetool--check-all flymake-languagetool--source-buffer))))
+
+(defun flymake-languagetool--checker (report-fn &rest _args)
+  "Diagnostic checker function with REPORT-FN."
+  (setq flymake-languagetool--report-fnc report-fn
+        flymake-languagetool--source-buffer (current-buffer))
+  (flymake-languagetool--report-once))
+
 ;;; Entry
 
 ;;;###autoload
@@ -65,7 +100,7 @@
   (setq flymake-grammarly--last-buffer-string (buffer-string))
   (flymake-grammarly--grammar-check)
   (add-hook 'after-change-functions #'flymake-grammarly--after-change-functions nil t)
-  (add-hook 'flymake-diagnostic-functions #'flymake-grammarly--checker nil t))
+  (add-hook 'flymake-diagnostic-functions #'flymake-languagetool--checker nil t))
 
 ;;;###autoload
 (defun flymake-languagetool-maybe-load ()
