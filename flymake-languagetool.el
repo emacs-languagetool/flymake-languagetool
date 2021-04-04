@@ -40,7 +40,7 @@
   :group 'flymake
   :link '(url-link :tag "Github" "https://github.com/emacs-languagetool/flymake-languagetool"))
 
-(defcustom flymake-languagetool-modes
+(defcustom flymake-languagetool-active-modes
   '(text-mode latex-mode org-mode markdown-mode)
   "List of major mode that work with LanguageTool."
   :type 'list
@@ -55,6 +55,24 @@
   :type '(string :tag "Language")
   :safe #'stringp)
 (make-variable-buffer-local 'flymake-languagetool-language)
+
+;;; Entry
+
+;;;###autoload
+(defun flymake-languagetool-load ()
+  "Configure flymake mode to check the current buffer's grammar."
+  (interactive)
+  (setq flymake-grammarly--last-buffer-string (buffer-string))
+  (flymake-grammarly--grammar-check)
+  (add-hook 'after-change-functions #'flymake-grammarly--after-change-functions nil t)
+  (add-hook 'flymake-diagnostic-functions #'flymake-grammarly--checker nil t))
+
+;;;###autoload
+(defun flymake-languagetool-maybe-load ()
+  "Call `flymake-languagetool-load' if this file appears to be check for grammar."
+  (interactive)
+  (when (memq major-mode flymake-languagetool-active-modes)
+    (flymake-languagetool-load)))
 
 (provide 'flymake-languagetool)
 ;;; flymake-languagetool.el ends here
