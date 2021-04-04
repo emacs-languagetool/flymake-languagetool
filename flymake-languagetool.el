@@ -40,5 +40,21 @@
   :group 'flymake
   :link '(url-link :tag "Github" "https://github.com/emacs-languagetool/flymake-languagetool"))
 
+(defcustom flymake-languagetool-modes
+  '(text-mode latex-mode org-mode markdown-mode)
+  "List of major mode that work with LanguageTool."
+  :type 'list
+  :group 'flymake-languagetool)
+
+(defcustom flymake-languagetool-commandline-jar ""
+  "The path of languagetool-commandline.jar."
+  :type '(file :must-match t))
+
+(defcustom flymake-languagetool-language "en-US"
+  "The language code of the text to check."
+  :type '(string :tag "Language")
+  :safe #'stringp)
+(make-variable-buffer-local 'flymake-languagetool-language)
+
 (provide 'flymake-languagetool)
 ;;; flymake-languagetool.el ends here
