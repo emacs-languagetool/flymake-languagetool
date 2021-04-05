@@ -31,6 +31,12 @@ otherwise you can call `flymake-languagetool-maybe-load` like the snippet below.
 (add-hook 'find-file-hook 'flymake-languagetool-maybe-load)
 ```
 
+## :wrench: Configuration
+
+* `flymake-languagetool-commandline-jar`
+* `flymake-languagetool-active-modes`
+* `flymake-languagetool-language` (Default `"en-US"`)
+
 ## Contribution
 
 If you would like to contribute to this project, you may either
