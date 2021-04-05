@@ -23,7 +23,7 @@ The instruction to use this plugin.
   (setq flymake-languagetool-commandline-jar "path/to/LanguageTool-X.X/languagetool-commandline.jar"))
 ```
 
-4. :tada: Now open a text file, then it should work!
+4. :tada: Done! Now open a text file and hit `M-x flymake-mode`!
 
 otherwise you can call `flymake-languagetool-maybe-load` like the snippet below.
 
