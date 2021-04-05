@@ -4,23 +4,26 @@
 # flymake-languagetool
 > Flymake support for LanguageTool.
 
-## Usage
+## :floppy_disk: Installation
 
-To enable this package, simply add loading to your config like the code below.
+The instruction to use this plugin.
 
-```el
-(require 'flymake-languagetool)
-```
-
-You can generally call `flymake-languagetool-load` to any `mode-hook` for
-LanguageTool to start working.
+1. Download LanguageTool from https://languagetool.org/download/.
+2. Extract on to your local machine.
+3. Consider adding the following snippet to your configuration.
 
 ```el
-(add-hook 'text-mode-hook 'flymake-languagetool-load)
-(add-hook 'latex-mode-hook 'flymake-languagetool-load)
-(add-hook 'org-mode-hook 'flymake-languagetool-load)
-(add-hook 'markdown-mode-hook 'flymake-languagetool-load)
+(use-package flymake-languagetool
+  :ensure t
+  :hook ((text-mode       . flymake-languagetool-load)
+         (latex-mode      . flymake-languagetool-load)
+         (org-mode        . flymake-languagetool-load)
+         (markdown-mode   . flymake-languagetool-load))
+  :init
+  (setq flymake-languagetool-commandline-jar "path/to/LanguageTool-X.X/languagetool-commandline.jar"))
 ```
+
+4. :tada: Now open a text file, then it should work!
 
 otherwise you can call `flymake-languagetool-maybe-load` like the snippet below.
 
