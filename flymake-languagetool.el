@@ -7,7 +7,7 @@
 ;; Description: Flymake support for LanguageTool
 ;; Keyword: grammar check
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "26.1"))
+;; Package-Requires: ((emacs "27.1"))
 ;; URL: https://github.com/emacs-languagetool/flymake-languagetool
 
 ;; This file is NOT part of GNU Emacs.
@@ -181,18 +181,18 @@ Rest argument ARGS is the rest of the argument for CMD."
     (when flymake-languagetool--done-checking
       (setq flymake-languagetool--done-checking nil)  ; start flag
       (flymake-languagetool--with-source-buffer
-       (let ((source (current-buffer)))
-         (flymake-languagetool--async-shell-command-to-string
-          (lambda (output)
-            (with-current-buffer source
-              (flymake-languagetool--cache-parse-result output)))
-          (format "java -jar %s %s --json %s %s"
-                  flymake-languagetool-commandline-jar
-                  (if (stringp flymake-languagetool-language)
-                      (concat "-l " flymake-languagetool-language)
-                    "-adl")
-                  (buffer-file-name)
-                  (if (stringp flymake-languagetool-args) flymake-languagetool-args ""))))))))
+        (let ((source (current-buffer)))
+          (flymake-languagetool--async-shell-command-to-string
+           (lambda (output)
+             (with-current-buffer source
+               (flymake-languagetool--cache-parse-result output)))
+           (format "java -jar %s %s --json %s %s"
+                   flymake-languagetool-commandline-jar
+                   (if (stringp flymake-languagetool-language)
+                       (concat "-l " flymake-languagetool-language)
+                     "-adl")
+                   (buffer-file-name)
+                   (if (stringp flymake-languagetool-args) flymake-languagetool-args ""))))))))
 
 (defun flymake-languagetool--start-timer ()
   "Start the timer for grammar check."
