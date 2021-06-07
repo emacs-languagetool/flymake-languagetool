@@ -32,7 +32,6 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl))
 (require 'json)
 (require 'flymake)
 
@@ -129,9 +128,8 @@ lines, and returns the parsed JSON lines in a list."
 Argument CALLBACK is called after command is done executing.
 Argument CMD is the name of the command executable.
 Rest argument ARGS is the rest of the argument for CMD."
-  (lexical-let
-      ((output-buffer (generate-new-buffer " *temp*"))
-       (callback-fun callback))
+  (let ((output-buffer (generate-new-buffer " *temp*"))
+        (callback-fun callback))
     (set-process-sentinel
      (start-process "Shell" output-buffer shell-file-name shell-command-switch
                     (concat cmd " " (mapconcat #'shell-quote-argument args " ")))
@@ -181,18 +179,18 @@ Rest argument ARGS is the rest of the argument for CMD."
     (when flymake-languagetool--done-checking
       (setq flymake-languagetool--done-checking nil)  ; start flag
       (flymake-languagetool--with-source-buffer
-        (let ((source (current-buffer)))
-          (flymake-languagetool--async-shell-command-to-string
-           (lambda (output)
-             (with-current-buffer source
-               (flymake-languagetool--cache-parse-result output)))
-           (format "java -jar %s %s --json %s %s"
-                   flymake-languagetool-commandline-jar
-                   (if (stringp flymake-languagetool-language)
-                       (concat "-l " flymake-languagetool-language)
-                     "-adl")
-                   (buffer-file-name)
-                   (if (stringp flymake-languagetool-args) flymake-languagetool-args ""))))))))
+       (let ((source (current-buffer)))
+         (flymake-languagetool--async-shell-command-to-string
+          (lambda (output)
+            (with-current-buffer source
+              (flymake-languagetool--cache-parse-result output)))
+          (format "java -jar %s %s --json %s %s"
+                  flymake-languagetool-commandline-jar
+                  (if (stringp flymake-languagetool-language)
+                      (concat "-l " flymake-languagetool-language)
+                    "-adl")
+                  (buffer-file-name)
+                  (if (stringp flymake-languagetool-args) flymake-languagetool-args ""))))))))
 
 (defun flymake-languagetool--start-timer ()
   "Start the timer for grammar check."
