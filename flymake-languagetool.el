@@ -7,7 +7,7 @@
 ;; Description: Flymake support for LanguageTool
 ;; Keyword: grammar check
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "27.1"))
+;; Package-Requires: ((emacs "27.1") (s "1.9.0"))
 ;; URL: https://github.com/emacs-languagetool/flymake-languagetool
 
 ;; This file is NOT part of GNU Emacs.
@@ -32,6 +32,7 @@
 
 ;;; Code:
 
+(require 's)
 (require 'json)
 (require 'flymake)
 
@@ -143,22 +144,12 @@ Rest argument ARGS is the rest of the argument for CMD."
 
 ;;; Core
 
-(defun flymake-languagetool--dos-coding-p ()
-  "Return non-nil if coding system is DOS, using \r\n."
-  (string-match-p "dos" (symbol-name buffer-file-coding-system)))
-
 (defun flymake-languagetool--check-all (source-buffer)
   "Check grammar for SOURCE-BUFFER document."
   (let ((matches (cdr (assoc 'matches flymake-languagetool--output)))
         check-list)
     (dolist (match matches)
       (let* ((pt-beg (1+ (cdr (assoc 'offset match))))
-             ;; TODO: The calculation is cause by LanguageTool,
-             ;; see https://github.com/languagetool-org/languagetool/issues/991
-             ;; for more information.
-             (pt-beg (if (flymake-languagetool--dos-coding-p)
-                         (- pt-beg (1- (line-number-at-pos pt-beg)))
-                       pt-beg))
              (len (cdr (assoc 'length match)))
              (pt-end (+ pt-beg len))
              (type 'warning)
@@ -179,18 +170,18 @@ Rest argument ARGS is the rest of the argument for CMD."
     (when flymake-languagetool--done-checking
       (setq flymake-languagetool--done-checking nil)  ; start flag
       (flymake-languagetool--with-source-buffer
-       (let ((source (current-buffer)))
-         (flymake-languagetool--async-shell-command-to-string
-          (lambda (output)
-            (with-current-buffer source
-              (flymake-languagetool--cache-parse-result output)))
-          (format "java -jar %s %s --json %s %s"
-                  flymake-languagetool-commandline-jar
-                  (if (stringp flymake-languagetool-language)
-                      (concat "-l " flymake-languagetool-language)
-                    "-adl")
-                  (buffer-file-name)
-                  (if (stringp flymake-languagetool-args) flymake-languagetool-args ""))))))))
+        (let ((source (current-buffer)))
+          (flymake-languagetool--async-shell-command-to-string
+           (lambda (output)
+             (when (buffer-live-p source)
+               (with-current-buffer source (flymake-languagetool--cache-parse-result output))))
+           (format "echo %s | java -jar %s %s --json -b %s"
+                   (s-replace "\n" " " (buffer-string))
+                   flymake-languagetool-commandline-jar
+                   (if (stringp flymake-languagetool-language)
+                       (concat "-l " flymake-languagetool-language)
+                     "-adl")
+                   (if (stringp flymake-languagetool-args) flymake-languagetool-args ""))))))))
 
 (defun flymake-languagetool--start-timer ()
   "Start the timer for grammar check."
