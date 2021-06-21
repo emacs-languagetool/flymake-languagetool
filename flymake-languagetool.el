@@ -149,12 +149,15 @@ Rest argument ARGS is the rest of the argument for CMD."
   (let ((matches (cdr (assoc 'matches flymake-languagetool--output)))
         check-list)
     (dolist (match matches)
-      (let* ((pt-beg (1+ (cdr (assoc 'offset match))))
+      (let* ((pt-beg (cdr (assoc 'offset match)))
              (len (cdr (assoc 'length match)))
              (pt-end (+ pt-beg len))
              (type 'warning)
              (desc (cdr (assoc 'message match))))
         (push (flymake-make-diagnostic source-buffer (1+ pt-beg) (1+ pt-end) type desc) check-list)))
+    (progn  ; Remove fitst and last element to avoid quote warningsk
+      (pop check-list)
+      (setq check-list (butlast check-list)))
     check-list))
 
 (defun flymake-languagetool--cache-parse-result (output)
@@ -176,7 +179,7 @@ Rest argument ARGS is the rest of the argument for CMD."
              (when (buffer-live-p source)
                (with-current-buffer source (flymake-languagetool--cache-parse-result output))))
            (format "echo %s | java -jar %s %s --json -b %s"
-                   (s-replace "\n" " " (buffer-string))
+                   (shell-quote-argument (s-replace "\n" " " (buffer-string)))
                    flymake-languagetool-commandline-jar
                    (if (stringp flymake-languagetool-language)
                        (concat "-l " flymake-languagetool-language)
