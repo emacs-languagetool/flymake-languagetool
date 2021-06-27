@@ -161,7 +161,7 @@ Rest argument ARGS is the rest of the argument for CMD."
     check-list))
 
 (defun flymake-languagetool--cache-parse-result (output)
-  "Refressh cache buffer from OUTPUT."
+  "Refresh cache buffer from OUTPUT."
   (setq flymake-languagetool--output (car (flymake-languagetool--parse-json output))
         flymake-languagetool--done-checking t)
   (flymake-mode 1))
@@ -173,18 +173,18 @@ Rest argument ARGS is the rest of the argument for CMD."
     (when flymake-languagetool--done-checking
       (setq flymake-languagetool--done-checking nil)  ; start flag
       (flymake-languagetool--with-source-buffer
-        (let ((source (current-buffer)))
-          (flymake-languagetool--async-shell-command-to-string
-           (lambda (output)
-             (when (buffer-live-p source)
-               (with-current-buffer source (flymake-languagetool--cache-parse-result output))))
-           (format "echo %s | java -jar %s %s --json -b %s"
-                   (shell-quote-argument (s-replace "\n" " " (buffer-string)))
-                   flymake-languagetool-commandline-jar
-                   (if (stringp flymake-languagetool-language)
-                       (concat "-l " flymake-languagetool-language)
-                     "-adl")
-                   (if (stringp flymake-languagetool-args) flymake-languagetool-args ""))))))))
+       (let ((source (current-buffer)))
+         (flymake-languagetool--async-shell-command-to-string
+          (lambda (output)
+            (when (buffer-live-p source)
+              (with-current-buffer source (flymake-languagetool--cache-parse-result output))))
+          (format "echo %s | java -jar %s %s --json -b %s"
+                  (shell-quote-argument (s-replace "\n" " " (buffer-string)))
+                  flymake-languagetool-commandline-jar
+                  (if (stringp flymake-languagetool-language)
+                      (concat "-l " flymake-languagetool-language)
+                    "-adl")
+                  (if (stringp flymake-languagetool-args) flymake-languagetool-args ""))))))))
 
 (defun flymake-languagetool--start-timer ()
   "Start the timer for grammar check."
