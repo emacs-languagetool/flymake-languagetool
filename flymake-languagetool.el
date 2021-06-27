@@ -71,7 +71,7 @@
   :group 'flymake-languagetool)
 
 (defvar-local flymake-languagetool--done-checking t
-  "If non-nil then we are currnetly in the checking process.")
+  "If non-nil then we are currently in the checking process.")
 
 (defvar-local flymake-languagetool--timer nil
   "Timer that will tell to do the request.")
