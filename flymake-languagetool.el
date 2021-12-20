@@ -36,6 +36,10 @@
 (require 'json)
 (require 'flymake)
 
+;; Dynamically bound.
+(defvar url-http-end-of-headers)
+
+
 (defgroup flymake-languagetool nil
   "Flymake support for LanguageTool."
   :prefix "flymake-languagetool-"
@@ -138,7 +142,8 @@ or plan to start a local server some other way."
     "MORFOLOGIK_RULE_UK_UA"
     "SYMSPELL_RULE")
   "LanguageTool rules for checking of spelling.
-These rules will be enabled if  `flymake-languagetool-check-spelling' is non-nil.")
+These rules will be enabled if `flymake-languagetool-check-spelling' is
+non-nil.")
 
 (defvar-local flymake-languagetool--source-buffer nil
   "Current buffer we are currently using for grammar check.")
@@ -169,21 +174,19 @@ These rules will be enabled if  `flymake-languagetool-check-spelling' is non-nil
          (errors (cdr (assoc 'matches full-results))))
     (flymake-languagetool--check-all errors source-buffer)))
 
-(defun flymake-languagetool--handle-finished (status source-buffer)
+(defun flymake-languagetool--handle-finished (status source-buffer report-fn)
   "Callback function for LanguageTool process for SOURCE-BUFFER.
 STATUS provided from `url-retrieve'."
   (when-let ((err (plist-get status :error)))
     (kill-buffer)
-    (error (funcall callback 'errored (error-message-string err))
-           (signal (car err) (cdr err))))
+    (funcall report-fn :panic :explanation (error-message-string err))
+    (error (error-message-string err)))
   (set-buffer-multibyte t)
   (goto-char url-http-end-of-headers)
   (let* ((output (buffer-substring (point) (point-max)))
-         (buf source-buffer)
          (errors (flymake-languagetool--output-to-errors output source-buffer))
          (region (with-current-buffer source-buffer
-                   (cons (point-min) (point-max))))
-         (report-fn flymake-languagetool--report-fnc))
+                   (cons (point-min) (point-max)))))
     (funcall report-fn errors :region region)))
 
 (defun flymake-languagetool--start-server ()
@@ -214,12 +217,11 @@ STATUS provided from `url-retrieve'."
     (unless flymake-languagetool--started-server
       (setq flymake-languagetool--started-server t)
       (flymake-languagetool--start-server)))
-  (let* ((url-request-method "POST")
+  (let* ((report-fn flymake-languagetool--report-fnc)
+         (url-request-method "POST")
          (url-request-extra-headers
           '(("Content-Type" . "application/x-www-form-urlencoded")))
          (source-buffer (current-buffer))
-         (data "")
-         (path "/v2/check")
          (params (list
                   (list "text" (with-current-buffer source-buffer (buffer-string)))
                   (list "language" flymake-languagetool-language)
@@ -233,7 +235,7 @@ STATUS provided from `url-retrieve'."
                          flymake-languagetool-server-port))
              "/v2/check")
      #'flymake-languagetool--handle-finished
-     (list source-buffer) t)))
+     (list source-buffer report-fn) t)))
 
 
 (defun flymake-languagetool--checker (report-fn &rest _args)
