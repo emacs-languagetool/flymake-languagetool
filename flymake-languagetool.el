@@ -164,8 +164,7 @@ These rules will be enabled if  `flymake-languagetool-check-spelling' is non-nil
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
   "Parse the JSON data from OUTPUT of LanguageTool. "
-  (let* ((objects nil)
-         (json-array-type 'list)
+  (let* ((json-array-type 'list)
          (full-results (json-read-from-string output))
          (errors (cdr (assoc 'matches full-results))))
     (flymake-languagetool--check-all errors source-buffer)))
