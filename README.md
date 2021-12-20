@@ -13,9 +13,10 @@
 
 The instruction to use this plugin.
 
-1. Download LanguageTool from https://languagetool.org/download/.
-2. Extract on to your local machine.
-3. Consider adding the following snippet to your configuration.
+1. Download LanguageTool from https://languagetool.org/download/ and
+   extract on to your local machine (skip this step if using a remote
+   server).
+2. Consider adding the following snippet to your configuration.
 
 ```el
 (use-package flymake-languagetool
@@ -25,10 +26,16 @@ The instruction to use this plugin.
          (org-mode        . flymake-languagetool-load)
          (markdown-mode   . flymake-languagetool-load))
   :init
-  (setq flymake-languagetool-commandline-jar "path/to/LanguageTool-X.X/languagetool-commandline.jar"))
+  ;; Remote server config with LanguageTool's free API
+  ;; (setq flymake-languagetool-url "https://api.languagetool.org")
+  ;; (setq flymake-languagetool-server-port nil)
+  ;; (setq flymake-languagetool-server-jar nil)
+
+  ;; Local server config
+  (setq flymake-languagetool-server-jar "path/to/LanguageTool-X.X/languagetool-server.jar"))
 ```
 
-4. :tada: Done! Now open a text file and hit `M-x flymake-mode`!
+3. :tada: Done! Now open a text file and hit `M-x flymake-mode`!
 
 otherwise you can call `flymake-languagetool-maybe-load` like the snippet below.
 
@@ -38,9 +45,16 @@ otherwise you can call `flymake-languagetool-maybe-load` like the snippet below.
 
 ## :wrench: Configuration
 
-* `flymake-languagetool-commandline-jar`
+* `flymake-languagetool-server-jar`
 * `flymake-languagetool-active-modes`
+* `flymake-languagetool-check-spelling`
 * `flymake-languagetool-language` (Default `"en-US"`)
+
+### :book: Spellchecking
+
+LanguageTool’s spellchecking is disabled by default. If
+`flymake-languagetool-check-spelling` is non-nil LanguageTool will check
+for spelling mistakes.
 
 ## Contribution
 

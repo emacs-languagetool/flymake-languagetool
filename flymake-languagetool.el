@@ -32,9 +32,13 @@
 
 ;;; Code:
 
-(require 's)
+(require 'url)
 (require 'json)
 (require 'flymake)
+
+;; Dynamically bound.
+(defvar url-http-end-of-headers)
+
 
 (defgroup flymake-languagetool nil
   "Flymake support for LanguageTool."
@@ -48,14 +52,36 @@
   :type 'list
   :group 'flymake-languagetool)
 
-(defcustom flymake-languagetool-commandline-jar ""
-  "The path of languagetool-commandline.jar."
-  :type '(file :must-match t)
+(defcustom flymake-languagetool-url nil
+  "The URL for the LanguageTool API we should connect to."
+  :type '(choice (const :tag "Auto" nil)
+                 (string :tag "URL"))
   :group 'flymake-languagetool)
 
-(defcustom flymake-languagetool-args ""
-  "Extra argument pass in to command line tool."
-  :type 'string
+(defcustom flymake-languagetool-server-jar nil
+  "The path of languagetool-server.jar.
+
+The server will be automatically started if specified.  Set to
+nil if you’re going to connect to a remote LanguageTool server,
+or plan to start a local server some other way."
+  :type '(choice (const :tag "Off" nil)
+                 (file :tag "Filename" :must-match t))
+  :link '(url-link :tag "LanguageTool embedded HTTP Server"
+           "https://dev.languagetool.org/http-server.html")
+  :group 'flymake-languagetool)
+
+(defcustom flymake-languagetool-server-port 8081
+  "The port on which an automatically started LanguageTool server should listen."
+  :type 'integer
+  :link '(url-link :tag "LanguageTool embedded HTTP Server"
+           "https://dev.languagetool.org/http-server.html")
+  :group 'flymake-languagetool)
+
+(defcustom flymake-languagetool-server-args ()
+  "Extra arguments to pass when starting the LanguageTool server."
+  :type '(repeat string)
+  :link '(url-link :tag "LanguageTool embedded HTTP Server"
+           "https://dev.languagetool.org/http-server.html")
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-language "en-US"
@@ -65,163 +91,165 @@
   :group 'flymake-languagetool)
 (make-variable-buffer-local 'flymake-languagetool-language)
 
-(defcustom flymake-languagetool-check-time 0.8
-  "How long do we call process after we done typing."
-  :type 'float
+(defcustom flymake-languagetool-check-spelling nil
+  "If non-nil, LanguageTool will check spelling."
+  :type '(string :tag "Language")
+  :safe #'stringp
   :group 'flymake-languagetool)
 
-(defvar-local flymake-languagetool--done-checking t
-  "If non-nil then we are currently in the checking process.")
+(defcustom flymake-languagetool-check-params ()
+  "Extra parameters to pass with LanguageTool check requests."
+  :type '(alist :key-type string :value-type string)
+  :link '(url-link
+          :tag "LanguageTool API"
+          "https://languagetool.org/http-api/swagger-ui/#!/default/post_check")
+  :group 'flymake-languagetool)
 
-(defvar-local flymake-languagetool--timer nil
-  "Timer that will tell to do the request.")
+(defvar flymake-languagetool--started-server nil
+  "Have we ever attempted to start the LanguageTool server?")
 
-(defvar-local flymake-languagetool--output nil
-  "Copy of the JSON output.")
+(defvar flymake-languagetool--spelling-rules
+  '("HUNSPELL_RULE"
+    "HUNSPELL_RULE_AR"
+    "MORFOLOGIK_RULE_AST"
+    "MORFOLOGIK_RULE_BE_BY"
+    "MORFOLOGIK_RULE_BR_FR"
+    "MORFOLOGIK_RULE_CA_ES"
+    "MORFOLOGIK_RULE_DE_DE"
+    "MORFOLOGIK_RULE_EL_GR"
+    "MORFOLOGIK_RULE_EN"
+    "MORFOLOGIK_RULE_EN_AU"
+    "MORFOLOGIK_RULE_EN_CA"
+    "MORFOLOGIK_RULE_EN_GB"
+    "MORFOLOGIK_RULE_EN_NZ"
+    "MORFOLOGIK_RULE_EN_US"
+    "MORFOLOGIK_RULE_EN_ZA"
+    "MORFOLOGIK_RULE_ES"
+    "MORFOLOGIK_RULE_GA_IE"
+    "MORFOLOGIK_RULE_IT_IT"
+    "MORFOLOGIK_RULE_LT_LT"
+    "MORFOLOGIK_RULE_ML_IN"
+    "MORFOLOGIK_RULE_NL_NL"
+    "MORFOLOGIK_RULE_PL_PL"
+    "MORFOLOGIK_RULE_RO_RO"
+    "MORFOLOGIK_RULE_RU_RU"
+    "MORFOLOGIK_RULE_RU_RU_YO"
+    "MORFOLOGIK_RULE_SK_SK"
+    "MORFOLOGIK_RULE_SL_SI"
+    "MORFOLOGIK_RULE_SR_EKAVIAN"
+    "MORFOLOGIK_RULE_SR_JEKAVIAN"
+    "MORFOLOGIK_RULE_TL"
+    "MORFOLOGIK_RULE_UK_UA"
+    "SYMSPELL_RULE")
+  "LanguageTool rules for checking of spelling.
+These rules will be enabled if `flymake-languagetool-check-spelling' is
+non-nil.")
 
 (defvar-local flymake-languagetool--source-buffer nil
   "Current buffer we are currently using for grammar check.")
 
-;;; Util
-
-(defconst flymake-languagetool--json-parser
-  (if (and (functionp 'json-parse-buffer)
-           ;; json-parse-buffer only supports keyword arguments in Emacs 27+
-           (>= emacs-major-version 27))
-      (lambda ()
-        (json-parse-buffer
-         :object-type 'alist :array-type 'list
-         :null-object nil :false-object nil))
-    #'json-read)
-  "Function to use to parse JSON strings.")
-
-(defun flymake-languagetool--parse-json (output)
-  "Return parsed JSON data from OUTPUT.
-
-OUTPUT is a string that contains JSON data.  Each line of OUTPUT
-may be either plain text, a JSON array (starting with `['), or a
-JSON object (starting with `{').
-
-This function ignores the plain text lines, parses the JSON
-lines, and returns the parsed JSON lines in a list."
-  (let ((objects nil)
-        (json-array-type 'list)
-        (json-false nil))
-    (with-temp-buffer
-      (insert output)
-      (goto-char (point-min))
-      (while (not (eobp))
-        (when (memq (char-after) '(?\{ ?\[))
-          (push (funcall flymake-languagetool--json-parser) objects))
-        (forward-line)))
-    (nreverse objects)))
-
-(defmacro flymake-languagetool--with-source-buffer (&rest body)
-  "Execute BODY inside currnet source buffer."
-  (declare (indent 0) (debug t))
-  `(if flymake-languagetool--source-buffer
-       (with-current-buffer flymake-languagetool--source-buffer (progn ,@body))
-     (user-error "Invalid source buffer: %s" flymake-languagetool--source-buffer)))
-
-(defun flymake-languagetool--async-shell-command-to-string (callback cmd &rest args)
-  "Asnyc version of function `shell-command-to-string'.
-
-Argument CALLBACK is called after command is done executing.
-Argument CMD is the name of the command executable.
-Rest argument ARGS is the rest of the argument for CMD."
-  (let ((output-buffer (generate-new-buffer " *temp*"))
-        (callback-fun callback))
-    (set-process-sentinel
-     (start-process "Shell" output-buffer shell-file-name shell-command-switch
-                    (concat cmd " " (mapconcat #'shell-quote-argument args " ")))
-     (lambda (process _signal)
-       (when (memq (process-status process) '(exit signal))
-         (with-current-buffer output-buffer
-           (let ((output-string (buffer-substring-no-properties (point-min) (point-max))))
-             (funcall callback-fun output-string)))
-         (kill-buffer output-buffer))))
-    output-buffer))
-
-;;; Core
-
-(defun flymake-languagetool--check-all (source-buffer)
-  "Check grammar for SOURCE-BUFFER document."
-  (let ((matches (cdr (assoc 'matches flymake-languagetool--output)))
-        check-list)
-    (dolist (match matches)
-      (let* ((pt-beg (cdr (assoc 'offset match)))
-             (len (cdr (assoc 'length match)))
-             (pt-end (+ pt-beg len))
-             (type 'warning)
-             (desc (cdr (assoc 'message match))))
-        (push (flymake-make-diagnostic source-buffer (1+ pt-beg) (1+ pt-end) type desc) check-list)))
-    (progn  ; Remove fitst and last element to avoid quote warningsk
-      (pop check-list)
-      (setq check-list (butlast check-list)))
-    check-list))
-
-(defun flymake-languagetool--cache-parse-result (output)
-  "Refresh cache buffer from OUTPUT."
-  (setq flymake-languagetool--output (car (flymake-languagetool--parse-json output))
-        flymake-languagetool--done-checking t)
-  (flymake-mode 1))
-
-(defun flymake-languagetool--send-process ()
-  "Send process to LanguageTool commandline-jar."
-  (if (not (file-exists-p flymake-languagetool-commandline-jar))
-      (user-error "Invalid commandline path: %s" flymake-languagetool-commandline-jar)
-    (when flymake-languagetool--done-checking
-      (setq flymake-languagetool--done-checking nil)  ; start flag
-      (flymake-languagetool--with-source-buffer
-       (let ((source (current-buffer)))
-         (flymake-languagetool--async-shell-command-to-string
-          (lambda (output)
-            (when (buffer-live-p source)
-              (with-current-buffer source (flymake-languagetool--cache-parse-result output))))
-          (format "echo %s | java -jar %s %s --json -b %s"
-                  (shell-quote-argument (s-replace "\n" " " (buffer-string)))
-                  flymake-languagetool-commandline-jar
-                  (if (stringp flymake-languagetool-language)
-                      (concat "-l " flymake-languagetool-language)
-                    "-adl")
-                  (if (stringp flymake-languagetool-args) flymake-languagetool-args ""))))))))
-
-(defun flymake-languagetool--start-timer ()
-  "Start the timer for grammar check."
-  (setq flymake-languagetool--source-buffer (current-buffer))
-  (when (timerp flymake-languagetool--timer) (cancel-timer flymake-languagetool--timer))
-  (setq flymake-languagetool--timer
-        (run-with-idle-timer flymake-languagetool-check-time nil
-                             #'flymake-languagetool--send-process)))
-
-;;; Flymake
-
 (defvar flymake-languagetool--report-fnc nil
   "Record report function/execution.")
 
-(defvar flymake-languagetool--source-buffer nil
-  "Record source check buffer.")
+;;; Util
 
-(defun flymake-languagetool--report-once ()
-  "Report with flymake after done requesting."
-  (when (functionp flymake-languagetool--report-fnc)
-    (flymake-languagetool--start-timer)
-    (funcall flymake-languagetool--report-fnc
-             (flymake-languagetool--check-all flymake-languagetool--source-buffer))))
+(defun flymake-languagetool--check-all (errors source-buffer)
+  "Check grammar ERRORS for SOURCE-BUFFER document."
+  (let (check-list)
+    (dolist (error errors)
+      (let-alist error
+        (push (flymake-make-diagnostic
+               source-buffer
+               (+ .offset 1)
+               (+ .offset .length 1)
+               :warning
+               (concat .message " [LanguageTool]"))
+              check-list)))
+    check-list))
+
+(defun flymake-languagetool--output-to-errors (output source-buffer)
+  "Parse the JSON data from OUTPUT of LanguageTool. "
+  (let* ((json-array-type 'list)
+         (full-results (json-read-from-string output))
+         (errors (cdr (assoc 'matches full-results))))
+    (flymake-languagetool--check-all errors source-buffer)))
+
+(defun flymake-languagetool--handle-finished (status source-buffer report-fn)
+  "Callback function for LanguageTool process for SOURCE-BUFFER.
+STATUS provided from `url-retrieve'."
+  (when-let ((err (plist-get status :error)))
+    (kill-buffer)
+    (funcall report-fn :panic :explanation (error-message-string err))
+    (error (error-message-string err)))
+  (set-buffer-multibyte t)
+  (goto-char url-http-end-of-headers)
+  (let* ((output (buffer-substring (point) (point-max)))
+         (errors (flymake-languagetool--output-to-errors output source-buffer))
+         (region (with-current-buffer source-buffer
+                   (cons (point-min) (point-max)))))
+    (funcall report-fn errors :region region)))
+
+(defun flymake-languagetool--start-server ()
+  "Start the LanguageTool server if we didn’t already."
+  (unless (process-live-p (get-process "languagetool-server"))
+    (let ((process
+           (apply #'start-process
+                  "languagetool-server"
+                  " *LanguageTool server*"
+                  "java"
+                  "-cp" (expand-file-name flymake-languagetool-server-jar)
+                  "org.languagetool.server.HTTPServer"
+                  "--port" (format "%s" flymake-languagetool-server-port)
+                  flymake-languagetool-server-args)))
+      (set-process-query-on-exit-flag process nil)
+      (while
+          (with-current-buffer (process-buffer process)
+            (goto-char (point-min))
+            (unless (re-search-forward " Server started$" nil t)
+              (accept-process-output process 1)
+              (process-live-p process)))))))
+
+;;; Flymake
+
+(defun flymake-languagetool--start ()
+  "Run LanguageTool on the current buffer's contents."
+  (when flymake-languagetool-server-jar
+    (unless flymake-languagetool--started-server
+      (setq flymake-languagetool--started-server t)
+      (flymake-languagetool--start-server)))
+  (let* ((report-fn flymake-languagetool--report-fnc)
+         (url-request-method "POST")
+         (url-request-extra-headers
+          '(("Content-Type" . "application/x-www-form-urlencoded")))
+         (source-buffer (current-buffer))
+         (params (list
+                  (list "text" (with-current-buffer source-buffer (buffer-string)))
+                  (list "language" flymake-languagetool-language)
+                  (unless flymake-languagetool-check-spelling
+                    (list "disabledRules" (string-join flymake-languagetool--spelling-rules
+                                                       ",")))))
+         (url-request-data (url-build-query-string params)))
+    (url-retrieve
+     (concat (or flymake-languagetool-url
+                 (format "http://localhost:%s"
+                         flymake-languagetool-server-port))
+             "/v2/check")
+     #'flymake-languagetool--handle-finished
+     (list source-buffer report-fn) t)))
+
 
 (defun flymake-languagetool--checker (report-fn &rest _args)
   "Diagnostic checker function with REPORT-FN."
-  (setq flymake-languagetool--report-fnc report-fn
-        flymake-languagetool--source-buffer (current-buffer))
-  (flymake-languagetool--report-once))
+  (setq flymake-languagetool--report-fnc report-fn)
+  (setq flymake-languagetool--source-buffer (current-buffer))
+  (flymake-languagetool--start))
 
 ;;; Entry
 
 ;;;###autoload
 (defun flymake-languagetool-load ()
-  "Configure flymake mode to check the current buffer's grammar."
-  (interactive)
-  (flymake-languagetool--start-timer)
+  "Convenience function to setup flymake-languagetool.
+This adds the language-tool checker to the list of flymake diagnostic functions."
   (add-hook 'flymake-diagnostic-functions #'flymake-languagetool--checker nil t))
 
 ;;;###autoload
