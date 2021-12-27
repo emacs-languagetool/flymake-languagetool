@@ -3,7 +3,7 @@
 ;; Copyright (C) 2021  Shen, Jen-Chieh
 ;; Created date 2021-04-02 23:22:37
 
-;; Author: Shen, Jen-Chieh <jcs090218@gmail.com>
+;; Authors: Shen, Jen-Chieh <jcs090218@gmail.com>, Trey Peacock <git@treypeacock.com>
 ;; Description: Flymake support for LanguageTool
 ;; Keyword: grammar check
 ;; Version: 0.2.0
