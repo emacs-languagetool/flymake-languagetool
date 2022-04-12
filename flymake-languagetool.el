@@ -70,16 +70,19 @@ or plan to start a local server some other way."
            "https://dev.languagetool.org/http-server.html")
   :group 'flymake-languagetool)
 
-(defcustom flymake-languagetool-server-port 8081
-  "The port on which an automatically started LanguageTool server should listen."
-  :type 'integer
+(defcustom flymake-languagetool-server-command
+  '("java" "-cp" flymake-languagetool-server-jar "org.languagetool.server.HTTPServer"
+    "--port" flymake-languagetool-server-port)
+  "Command used to start LanguageTool server.
+This should be a list of strings or symbols that should evaluate to strings."
+  :type '(repeat (choice string symbol))
   :link '(url-link :tag "LanguageTool embedded HTTP Server"
            "https://dev.languagetool.org/http-server.html")
   :group 'flymake-languagetool)
 
-(defcustom flymake-languagetool-server-args ()
-  "Extra arguments to pass when starting the LanguageTool server."
-  :type '(repeat string)
+(defcustom flymake-languagetool-server-port 8081
+  "The port on which an automatically started LanguageTool server should listen."
+  :type 'integer
   :link '(url-link :tag "LanguageTool embedded HTTP Server"
            "https://dev.languagetool.org/http-server.html")
   :group 'flymake-languagetool)
@@ -104,9 +107,6 @@ or plan to start a local server some other way."
           :tag "LanguageTool API"
           "https://languagetool.org/http-api/swagger-ui/#!/default/post_check")
   :group 'flymake-languagetool)
-
-(defvar flymake-languagetool--started-server nil
-  "Have we ever attempted to start the LanguageTool server?")
 
 (defvar flymake-languagetool--spelling-rules
   '("HUNSPELL_RULE"
@@ -168,7 +168,7 @@ non-nil.")
     check-list))
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
-  "Parse the JSON data from OUTPUT of LanguageTool. "
+  "Parse the JSON data from OUTPUT of LanguageTool."
   (let* ((json-array-type 'list)
          (full-results (json-read-from-string output))
          (errors (cdr (assoc 'matches full-results))))
@@ -189,18 +189,20 @@ STATUS provided from `url-retrieve'."
                    (cons (point-min) (point-max)))))
     (funcall report-fn errors :region region)))
 
+(defun flymake-languagetool--expand-server-command ()
+  "Return result of evaluating symbols in `flymake-languagetool-server-command'."
+  (mapcar (lambda (el)
+            (if (symbolp el) (format "%s" (symbol-value el)) el))
+          flymake-languagetool-server-command))
+
 (defun flymake-languagetool--start-server ()
   "Start the LanguageTool server if we didn’t already."
   (unless (process-live-p (get-process "languagetool-server"))
     (let ((process
            (apply #'start-process
                   "languagetool-server"
-                  " *LanguageTool server*"
-                  "java"
-                  "-cp" (expand-file-name flymake-languagetool-server-jar)
-                  "org.languagetool.server.HTTPServer"
-                  "--port" (format "%s" flymake-languagetool-server-port)
-                  flymake-languagetool-server-args)))
+                  "*LanguageTool server*"
+                  (flymake-languagetool--expand-server-command))))
       (set-process-query-on-exit-flag process nil)
       (while
           (with-current-buffer (process-buffer process)
@@ -213,10 +215,8 @@ STATUS provided from `url-retrieve'."
 
 (defun flymake-languagetool--start ()
   "Run LanguageTool on the current buffer's contents."
-  (when flymake-languagetool-server-jar
-    (unless flymake-languagetool--started-server
-      (setq flymake-languagetool--started-server t)
-      (flymake-languagetool--start-server)))
+  (unless flymake-languagetool-url
+    (flymake-languagetool--start-server))
   (let* ((report-fn flymake-languagetool--report-fnc)
          (url-request-method "POST")
          (url-request-extra-headers
