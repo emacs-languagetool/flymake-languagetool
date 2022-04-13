@@ -70,11 +70,17 @@ or plan to start a local server some other way."
            "https://dev.languagetool.org/http-server.html")
   :group 'flymake-languagetool)
 
-(defcustom flymake-languagetool-server-port 8081
-  "The port on which an automatically started LanguageTool server should listen."
-  :type 'integer
+(defcustom flymake-languagetool-server-port "8081"
+  "Port used to make api url requests on local server."
+  :type 'string
   :link '(url-link :tag "LanguageTool embedded HTTP Server"
            "https://dev.languagetool.org/http-server.html")
+  :group 'flymake-languagetool)
+
+(defcustom flymake-languagetool-server-command ()
+  "Custom command to start LanguageTool server.
+If non-nil, this list of strings replaces the standard java cli command."
+  :type '(repeat string)
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-server-args ()
@@ -192,15 +198,13 @@ STATUS provided from `url-retrieve'."
 (defun flymake-languagetool--start-server ()
   "Start the LanguageTool server if we didn’t already."
   (unless (process-live-p (get-process "languagetool-server"))
-    (let ((process
-           (apply #'start-process
-                  "languagetool-server"
-                  " *LanguageTool server*"
-                  "java"
-                  "-cp" (expand-file-name flymake-languagetool-server-jar)
-                  "org.languagetool.server.HTTPServer"
-                  "--port" (format "%s" flymake-languagetool-server-port)
-                  flymake-languagetool-server-args)))
+    (let* ((cmd (or flymake-languagetool-server-command
+                    (list "java" "-cp" flymake-languagetool-server-jar
+                          "org.languagetool.server.HTTPServer"
+                          "--port" flymake-languagetool-server-port)))
+           (process (apply #'start-process "languagetool-server"
+                           " *LanguageTool server*"
+                           (append cmd flymake-languagetool-server-args))))
       (set-process-query-on-exit-flag process nil)
       (while
           (with-current-buffer (process-buffer process)
@@ -213,7 +217,8 @@ STATUS provided from `url-retrieve'."
 
 (defun flymake-languagetool--start ()
   "Run LanguageTool on the current buffer's contents."
-  (when flymake-languagetool-server-jar
+  (when (or flymake-languagetool-server-command
+            flymake-languagetool-server-jar)
     (unless flymake-languagetool--started-server
       (setq flymake-languagetool--started-server t)
       (flymake-languagetool--start-server)))
