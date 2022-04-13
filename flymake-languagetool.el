@@ -44,7 +44,8 @@
   "Flymake support for LanguageTool."
   :prefix "flymake-languagetool-"
   :group 'flymake
-  :link '(url-link :tag "Github" "https://github.com/emacs-languagetool/flymake-languagetool"))
+  :link '(url-link :tag "Github"
+                   "https://github.com/emacs-languagetool/flymake-languagetool"))
 
 (defcustom flymake-languagetool-active-modes
   '(text-mode latex-mode org-mode markdown-mode message-mode)
@@ -67,14 +68,14 @@ or plan to start a local server some other way."
   :type '(choice (const :tag "Off" nil)
                  (file :tag "Filename" :must-match t))
   :link '(url-link :tag "LanguageTool embedded HTTP Server"
-           "https://dev.languagetool.org/http-server.html")
+                   "https://dev.languagetool.org/http-server.html")
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-server-port "8081"
   "Port used to make api url requests on local server."
   :type 'string
   :link '(url-link :tag "LanguageTool embedded HTTP Server"
-           "https://dev.languagetool.org/http-server.html")
+                   "https://dev.languagetool.org/http-server.html")
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-server-command ()
@@ -87,7 +88,7 @@ If non-nil, this list of strings replaces the standard java cli command."
   "Extra arguments to pass when starting the LanguageTool server."
   :type '(repeat string)
   :link '(url-link :tag "LanguageTool embedded HTTP Server"
-           "https://dev.languagetool.org/http-server.html")
+                   "https://dev.languagetool.org/http-server.html")
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-language "en-US"
@@ -99,16 +100,15 @@ If non-nil, this list of strings replaces the standard java cli command."
 
 (defcustom flymake-languagetool-check-spelling nil
   "If non-nil, LanguageTool will check spelling."
-  :type '(string :tag "Language")
-  :safe #'stringp
+  :type 'boolean
+  :safe #'booleanp
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-check-params ()
   "Extra parameters to pass with LanguageTool check requests."
   :type '(alist :key-type string :value-type string)
-  :link '(url-link
-          :tag "LanguageTool API"
-          "https://languagetool.org/http-api/swagger-ui/#!/default/post_check")
+  :link '(url-link :tag "LanguageTool API"
+                   "https://languagetool.org/http-api/swagger-ui/#!/default/post_check")
   :group 'flymake-languagetool)
 
 (defvar flymake-languagetool--started-server nil
@@ -254,12 +254,13 @@ STATUS provided from `url-retrieve'."
 ;;;###autoload
 (defun flymake-languagetool-load ()
   "Convenience function to setup flymake-languagetool.
-This adds the language-tool checker to the list of flymake diagnostic functions."
+This adds the language-tool checker to the list of flymake diagnostic
+functions."
   (add-hook 'flymake-diagnostic-functions #'flymake-languagetool--checker nil t))
 
 ;;;###autoload
 (defun flymake-languagetool-maybe-load ()
-  "Call `flymake-languagetool-load' if this file appears to be check for grammar."
+  "Load backend if major-mode in `flymake-languagetool-active-modes'"
   (interactive)
   (when (memq major-mode flymake-languagetool-active-modes)
     (flymake-languagetool-load)))
