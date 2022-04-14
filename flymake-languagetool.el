@@ -194,11 +194,16 @@ STATUS provided from `url-retrieve'."
     (error (error-message-string err)))
   (set-buffer-multibyte t)
   (goto-char url-http-end-of-headers)
-  (let* ((output (buffer-substring (point) (point-max)))
-         (errors (flymake-languagetool--output-to-errors output source-buffer))
-         (region (with-current-buffer source-buffer
-                   (cons (point-min) (point-max)))))
-    (funcall report-fn errors :region region)))
+  (if (equal report-fn flymake-languagetool--report-fnc)
+      (let* ((output (buffer-substring (point) (point-max)))
+             (errors (flymake-languagetool--output-to-errors output source-buffer))
+             (region (with-current-buffer source-buffer
+                       (cons (point-min) (point-max)))))
+        (save-restriction
+          (widen)
+          (funcall report-fn errors :region region)
+          (setq flymake-languagetool--report-fnc nil)))
+    (flymake-log :warning "Canceling obsolete check %s" source-buffer)))
 
 (defun flymake-languagetool--start-server ()
   "Start the LanguageTool server if we didn’t already."
