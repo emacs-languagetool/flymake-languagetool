@@ -56,6 +56,19 @@ LanguageTool’s spellchecking is disabled by default. If
 `flymake-languagetool-check-spelling` is non-nil LanguageTool will check
 for spelling mistakes.
 
+### :straight_ruler: Disabling Rules
+
+Specific rules can be disabled using
+`flymake-languagetool--disabled-rules`. For example, LanguageTool's
+whitespace rule can be a bit verbose in `org-mode` and it can be
+disabled by adding its ID to this variable.
+
+```el
+(push "WHITESPACE_RULE" flymake-languagetool--disabled-rules)
+```
+
+The full list of rules and their IDs can be found [here](https://community.languagetool.org/rule/list?lang=en).
+
 ## Contribute
 
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)

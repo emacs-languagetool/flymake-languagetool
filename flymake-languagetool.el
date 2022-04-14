@@ -151,6 +151,11 @@ If non-nil, this list of strings replaces the standard java cli command."
 These rules will be enabled if `flymake-languagetool-check-spelling' is
 non-nil.")
 
+(defcustom flymake-languagetool--disabled-rules '()
+  "LanguageTool rules to be disabled by default. "
+  :type '(repeat string)
+  :group 'flymake-languagetool)
+
 (defvar-local flymake-languagetool--source-buffer nil
   "Current buffer we are currently using for grammar check.")
 
@@ -214,6 +219,7 @@ STATUS provided from `url-retrieve'."
               (process-live-p process)))))))
 
 ;;; Flymake
+(autoload #'seq-union "seq")
 
 (defun flymake-languagetool--start ()
   "Run LanguageTool on the current buffer's contents."
@@ -227,12 +233,17 @@ STATUS provided from `url-retrieve'."
          (url-request-extra-headers
           '(("Content-Type" . "application/x-www-form-urlencoded")))
          (source-buffer (current-buffer))
+         (disabled (string-join (seq-union
+                                 flymake-languagetool--disabled-rules
+                                 (unless flymake-languagetool-check-spelling
+                                   flymake-languagetool--spelling-rules))
+                                ","))
          (params (list
-                  (list "text" (with-current-buffer source-buffer (buffer-string)))
+                  (list "text" (with-current-buffer source-buffer
+                                 (buffer-substring-no-properties (point-min) (point-max))))
                   (list "language" flymake-languagetool-language)
-                  (unless flymake-languagetool-check-spelling
-                    (list "disabledRules" (string-join flymake-languagetool--spelling-rules
-                                                       ",")))))
+                  (unless (string-empty-p disabled)
+                    (list "disabledRules" disabled))))
          (url-request-data (url-build-query-string params)))
     (url-retrieve
      (concat (or flymake-languagetool-url
