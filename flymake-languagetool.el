@@ -224,8 +224,6 @@ STATUS provided from `url-retrieve'."
               (process-live-p process)))))))
 
 ;;; Flymake
-(autoload #'seq-union "seq")
-
 (defun flymake-languagetool--start ()
   "Run LanguageTool on the current buffer's contents."
   (when (or flymake-languagetool-server-command
@@ -238,7 +236,7 @@ STATUS provided from `url-retrieve'."
          (url-request-extra-headers
           '(("Content-Type" . "application/x-www-form-urlencoded")))
          (source-buffer (current-buffer))
-         (disabled (string-join (seq-union
+         (disabled (string-join (append
                                  flymake-languagetool--disabled-rules
                                  (unless flymake-languagetool-check-spelling
                                    flymake-languagetool--spelling-rules))
