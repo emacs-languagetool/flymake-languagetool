@@ -4,11 +4,10 @@
 ;; Created date 2021-04-02 23:22:37
 
 ;; Authors: Shen, Jen-Chieh <jcs090218@gmail.com>, Trey Peacock <git@treypeacock.com>
-;; Description: Flymake support for LanguageTool
-;; Keyword: grammar check
+;; URL: https://github.com/emacs-languagetool/flymake-languagetool
 ;; Version: 0.2.0
 ;; Package-Requires: ((emacs "27.1") (s "1.9.0"))
-;; URL: https://github.com/emacs-languagetool/flymake-languagetool
+;; Keywords: grammar check
 
 ;; This file is NOT part of GNU Emacs.
 
