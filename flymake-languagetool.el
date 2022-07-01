@@ -38,6 +38,7 @@
 ;; Dynamically bound.
 (defvar url-http-end-of-headers)
 
+(autoload #'seq-map "seq")
 
 (defgroup flymake-languagetool nil
   "Flymake support for LanguageTool."
@@ -173,9 +174,14 @@ non-nil.")
                (+ .offset 1)
                (+ .offset .length 1)
                :warning
-               (concat .message " [LanguageTool]"))
-              check-list)))
-    check-list))
+               (concat .message " [LanguageTool]")
+               ;; add text property for suggested replacements
+               `((suggestions . ,(seq-map
+                                  (lambda (rep)
+                                    (car (map-values rep)))
+                                  .replacements))))
+        check-list)))
+  check-list))
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
   "Parse the JSON data from OUTPUT of LanguageTool. "
@@ -261,6 +267,125 @@ STATUS provided from `url-retrieve'."
   (setq flymake-languagetool--report-fnc report-fn)
   (setq flymake-languagetool--source-buffer (current-buffer))
   (flymake-languagetool--start))
+
+(defun flymake-languagetool--ovs ()
+  "List of all `flymake-languagetool' diagnostic overlays."
+  (let* ((n 1)
+         (ovs (flymake--overlays
+               :filter (lambda (ov)
+                         (when-let ((diag (overlay-get ov 'flymake-diagnostic)))
+                           (eq (flymake-diagnostic-backend diag)
+                               'flymake-languagetool--checker)))
+               :compare (if (cl-plusp n) #'< #'>)
+               :key #'overlay-start)))
+    ovs))
+
+(defun flymake-languagetool--ov-at-point (&optional start)
+  "Return `flymake-languagetool' overlay at point."
+  (catch 'overlay
+    (dolist (ol (overlays-at (or start (point))))
+      (when-let ((diag (overlay-get ol 'flymake-diagnostic)))
+        (when (eq (flymake-diagnostic-backend diag)
+                  'flymake-languagetool--checker)
+          (setq flymake-languagetool-current-cand ol)
+          (throw 'overlay ol))))))
+
+(defun flymake-languagetool--suggestions ()
+  "Show corrections suggested from LanguageTool."
+  (let ((ol flymake-languagetool-current-cand))
+    (overlay-put ol 'face 'isearch)
+    (map-elt
+     (flymake-diagnostic-data
+      (overlay-get ol 'flymake-diagnostic))
+     'suggestions)))
+
+(defun flymake-languagetool--clean-overlay ()
+  "Remove highlighting of current candidate."
+  (ignore-errors
+    (overlay-put flymake-languagetool-current-cand 'face 'flymake-warning))
+  (setq flymake-languagetool-current-cand nil))
+
+;;; Corrections
+
+;;;###autoload
+(defun flymake-languagetool-next (&optional n)
+  "Go to Nth next flymake languagetool error."
+  (interactive (list (or current-prefix-arg 1)))
+  (let* ((ovs (flymake-languagetool--ovs))
+         (tail (cl-member-if (lambda (ov)
+                               (if (cl-plusp n)
+                                   (> (overlay-start ov)
+                                      (point))
+                                 (< (overlay-start ov)
+                                    (point))))
+                             ovs))
+         (chain (if flymake-wrap-around
+                    (if tail
+                        (progn (setcdr (last tail) ovs) tail)
+                      (and ovs (setcdr (last ovs) ovs)))
+                  tail))
+         (target (nth (1- n) chain)))
+    (goto-char (overlay-start target))))
+
+;;;###autoload
+(defun flymake-languagetool-previous (&optional n)
+  "Go to Nth previous flymake languagetool error."
+  (interactive (list (or current-prefix-arg 1)))
+  (flymake-languagetool-next (- n)))
+
+;;;###autoload
+(defun flymake-languagetool-correct-at-point (&optional ol)
+  "Correct `flymake-languagetool' diagnostic at point.
+Use OL as diagnostic if non-nil."
+  (interactive)
+  (unless (or ol (flymake-languagetool--ov-at-point))
+    (user-error "No correction at point"))
+  (when ol
+    (setq flymake-languagetool-current-cand ol))
+  (condition-case nil
+      (when-let ((ov flymake-languagetool-current-cand)
+                 (start (overlay-start ov))
+                 (end (overlay-end ov))
+                 (sugs (flymake-languagetool--suggestions))
+                 (prompt (flymake-diagnostic-text (overlay-get ov 'flymake-diagnostic)))
+                 (choice (condition-case nil
+                             (completing-read (format "Correction (%s): " prompt) sugs)
+                           (t (flymake-languagetool--clean-overlay)))))
+        (delete-region start end)
+        (goto-char start)
+        (insert choice)
+        (setq flymake-languagetool-current-cand nil))
+    (t (flymake-languagetool--clean-overlay))))
+
+;;;###autoload
+(defun flymake-languagetool-correct ()
+  "Use `completing-read' to select and correct diagnostic."
+  (interactive)
+  (let* ((ovs (flymake-languagetool--ovs))
+         (cands (seq-map (lambda (ov)
+                           (cons (format "%s: %s" (line-number-at-pos (overlay-start ov))
+                                         (flymake-diagnostic-text (overlay-get ov 'flymake-diagnostic)))
+                                 ov))
+                         ovs))
+         (cand (if cands
+                   (completing-read "Error: " cands)
+                 (user-error "No candidates")))
+         (ov (map-elt cands cand)))
+    (save-excursion
+      (goto-char (overlay-start ov))
+      (condition-case nil
+          (funcall #'flymake-languagetool-correct-at-point ov)
+        (quit (flymake-languagetool--clean-overlay))
+        (t (flymake-languagetool--clean-overlay))))))
+
+;;;###autoload
+(defun flymake-languagetool-correct-dwim ()
+  "DWIM function for correcting `flymake-languagetool' diagnostics."
+  (interactive)
+  (if-let ((ov (flymake-languagetool--ov-at-point)))
+      (funcall #'flymake-languagetool-correct-at-point ov)
+    (funcall-interactively #'flymake-languagetool-correct)))
+
 
 ;;; Entry
 
