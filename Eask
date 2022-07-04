@@ -3,7 +3,7 @@
          "Flymake support for LanguageTool")
 
 (website-url "https://github.com/emacs-languagetool/flymake-languagetool")
-(keywords "grammar" "check")
+(keywords "convenience" "grammar" "check")
 
 (package-file "flymake-languagetool.el")
 
