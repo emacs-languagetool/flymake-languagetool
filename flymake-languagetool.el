@@ -246,7 +246,7 @@ STATUS provided from `url-retrieve'."
                   (list "language" flymake-languagetool-language)
                   (unless (string-empty-p disabled)
                     (list "disabledRules" disabled))))
-         (url-request-data (url-build-query-string params)))
+         (url-request-data (url-build-query-string params nil t)))
     (url-retrieve
      (concat (or flymake-languagetool-url
                  (format "http://localhost:%s"
