@@ -69,6 +69,19 @@ disabled by adding its ID to this variable.
 
 The full list of rules and their IDs can be found [here](https://community.languagetool.org/rule/list?lang=en).
 
+### :ballot_box_with_check: Corrections
+
+Suggestions from LanguageTool can be applied with:
+
+`flymake-languagetool-correct`: select error in current buffer with
+    completing read
+
+`flymake-languagetool-correct-at-point`: correct error at point
+
+`flymake-languagetool-correct-dwim`: if point is on a
+    `flymake-languagetool` error then correct; otherwise, select one
+    from the current buffer.
+
 ## Contribute
 
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
