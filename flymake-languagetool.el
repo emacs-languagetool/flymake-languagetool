@@ -113,7 +113,7 @@ If non-nil, this list of strings replaces the standard java cli command."
 (defvar flymake-languagetool--started-server nil
   "Have we ever attempted to start the LanguageTool server?")
 
-(defvar flymake-languagetool--spelling-rules
+(defcustom flymake-languagetool-spelling-rules
   '("HUNSPELL_RULE"
     "HUNSPELL_RULE_AR"
     "MORFOLOGIK_RULE_AST"
@@ -148,9 +148,11 @@ If non-nil, this list of strings replaces the standard java cli command."
     "SYMSPELL_RULE")
   "LanguageTool rules for checking of spelling.
 These rules will be enabled if `flymake-languagetool-check-spelling' is
-non-nil.")
+non-nil."
+  :type '(repeat string)
+  :group 'flymake-languagetool)
 
-(defcustom flymake-languagetool--disabled-rules '()
+(defcustom flymake-languagetool-disabled-rules '()
   "LanguageTool rules to be disabled by default. "
   :type '(repeat string)
   :group 'flymake-languagetool)
@@ -241,9 +243,9 @@ STATUS provided from `url-retrieve'."
           '(("Content-Type" . "application/x-www-form-urlencoded")))
          (source-buffer (current-buffer))
          (disabled (string-join (append
-                                 flymake-languagetool--disabled-rules
+                                 flymake-languagetool-disabled-rules
                                  (unless flymake-languagetool-check-spelling
-                                   flymake-languagetool--spelling-rules))
+                                   flymake-languagetool-spelling-rules))
                                 ","))
          (params (list
                   (list "text" (with-current-buffer source-buffer
