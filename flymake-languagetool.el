@@ -31,14 +31,13 @@
 
 ;;; Code:
 
+(require 'seq)
 (require 'url)
 (require 'json)
 (require 'flymake)
 
 ;; Dynamically bound.
 (defvar url-http-end-of-headers)
-
-(autoload #'seq-map "seq")
 
 (defgroup flymake-languagetool nil
   "Flymake support for LanguageTool."
@@ -180,8 +179,8 @@ non-nil.")
                                   (lambda (rep)
                                     (car (map-values rep)))
                                   .replacements))))
-        check-list)))
-  check-list))
+              check-list)))
+    check-list))
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
   "Parse the JSON data from OUTPUT of LanguageTool. "
@@ -279,6 +278,9 @@ STATUS provided from `url-retrieve'."
                :compare (if (cl-plusp n) #'< #'>)
                :key #'overlay-start)))
     ovs))
+
+(defvar-local flymake-languagetool-current-cand nil
+  "Current overlay candidate.")
 
 (defun flymake-languagetool--ov-at-point (&optional start)
   "Return `flymake-languagetool' overlay at point."
