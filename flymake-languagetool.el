@@ -160,7 +160,54 @@ non-nil."
 (defvar flymake-languagetool--report-fnc nil
   "Record report function/execution.")
 
+(defvar flymake-languagetool-use-categories t
+  "Report errors with LanguageTool Category.")
+
+(defcustom flymake-languagetool-disabled-categories '()
+  "LanguageTool rules to be disabled by default. "
+  :type '(repeat string)
+  :group 'flymake-languagetool)
+
+
+(defconst flymake-languagetool-category-map
+  '(("CASING" . :casing)
+    ("COLLOQUIALISMS" . :colloquialisms)
+    ("COMPOUNDING" . :compounding)
+    ("CONFUSED_WORDS" . :confused-words)
+    ("FALSE_FRIENDS" . :false-friends)
+    ("GENDER_NEUTRALITY" . :gender-neutrality)
+    ("GRAMMAR" . :grammar)
+    ("MISC" . :misc)
+    ("PLAIN_ENGLISH" . :plain-english)
+    ("PUNCTUATION" . :punctuation)
+    ("REDUNDANCY" . :redundancy)
+    ("REGIONALISMS" . :regionalisms)
+    ("REPETITIONS" . :repetitions)
+    ("REPETITIONS_STYLE" . :repetitions-style)
+    ("SEMANTICS" . :semantics)
+    ("STYLE" . :style)
+    ("TYPOGRAPHY" . :typography)
+    ("TYPOS" . :typos)
+    ("WIKIPEDIA" . :wikipedia))
+  ;; https://languagetool.org/development/api/org/languagetool/rules/Categories.html
+  "LanguageTool category mappings")
+
 ;;; Util
+(defun flymake-languagetool--category-setup ()
+  "Setup LanguageTool categories as Flymake types."
+  (cl-loop for (n . key) in flymake-languagetool-category-map
+           for name = (downcase (string-replace "_" "-" n))
+           for cat = (intern (format "flymake-languagetool-%s" name))
+           do
+           (put key 'flymake-category cat)
+           (put cat 'face 'flymake-warning)
+           (put cat 'flymake-bitmap 'flymake-warning-bitmap)
+           (put cat 'severity (warning-numeric-level :warning))
+           (put cat 'mode-line-face 'compilation-warning)
+           (put cat 'flymake-type-name name)))
+
+(when flymake-languagetool-use-categories
+  (flymake-languagetool--category-setup))
 
 (defun flymake-languagetool--check-all (errors source-buffer)
   "Check grammar ERRORS for SOURCE-BUFFER document."
@@ -171,13 +218,20 @@ non-nil."
                source-buffer
                (+ .offset 1)
                (+ .offset .length 1)
-               :warning
+               (if flymake-languagetool-use-categories
+                   (map-elt flymake-languagetool-category-map
+                            .rule.category.id)
+                 :warning)
                (concat .message " [LanguageTool]")
                ;; add text property for suggested replacements
-               `((suggestions . ,(seq-map
-                                  (lambda (rep)
-                                    (car (map-values rep)))
-                                  .replacements))))
+               `((suggestions . (,@(seq-map
+                                    (lambda (rep)
+                                      (car (map-values rep)))
+                                    .replacements)))
+                 (rule-id . ,.rule.id)
+                 (rule-desc . ,.rule.description)
+                 (type . ,.rule.issueType)
+                 (category . ,.rule.category.id)))
               check-list)))
     check-list))
 
@@ -216,17 +270,21 @@ STATUS provided from `url-retrieve'."
          (url-request-extra-headers
           '(("Content-Type" . "application/x-www-form-urlencoded")))
          (source-buffer (current-buffer))
-         (disabled (string-join (append
-                                 flymake-languagetool-disabled-rules
-                                 (unless flymake-languagetool-check-spelling
-                                   flymake-languagetool-spelling-rules))
-                                ","))
+         (disabled-cats (string-join
+                         flymake-languagetool-disabled-categories ","))
+         (disabled-rules (string-join (append
+                                       flymake-languagetool-disabled-rules
+                                       (unless flymake-languagetool-check-spelling
+                                         flymake-languagetool-spelling-rules))
+                                      ","))
          (params (list
                   (list "text" (with-current-buffer source-buffer
                                  (buffer-substring-no-properties (point-min) (point-max))))
                   (list "language" flymake-languagetool-language)
-                  (unless (string-empty-p disabled)
-                    (list "disabledRules" disabled))))
+                  (unless (string-empty-p disabled-rules)
+                    (list "disabledRules" disabled-rules))
+                  (unless (string-empty-p disabled-cats)
+                    (list "disabledCategories" disabled-cats))))
          (url-request-data (url-build-query-string params nil t)))
     (url-retrieve
      (concat (or flymake-languagetool-url
@@ -303,16 +361,43 @@ STATUS provided from `url-retrieve'."
 (defun flymake-languagetool--suggestions ()
   "Show corrections suggested from LanguageTool."
   (overlay-put flymake-languagetool-current-cand 'face 'isearch)
-  (map-elt
-   (flymake-diagnostic-data
-    (overlay-get flymake-languagetool-current-cand 'flymake-diagnostic))
-   'suggestions))
+  (let ((sugs (map-elt (flymake-diagnostic-data
+                        (overlay-get flymake-languagetool-current-cand
+                                     'flymake-diagnostic))
+                       'suggestions)))
+    (cl-remove-if #'null `(,@sugs "Ignore Rule" "Ignore Category"))))
 
 (defun flymake-languagetool--clean-overlay ()
   "Remove highlighting of current candidate."
   (ignore-errors
     (overlay-put flymake-languagetool-current-cand 'face 'flymake-warning))
   (setq flymake-languagetool-current-cand nil))
+
+(defun flymake-languagetool--check-buffer ()
+  (when (bound-and-true-p flymake-mode)
+    (flymake-start)))
+
+(defun flymake-languagetool--ignore (ov id type)
+  (let ((desc (map-elt (flymake-diagnostic-data
+                        (overlay-get ov 'flymake-diagnostic))
+                       'rule-desc)))
+    (when (eq type 'Rule)
+      (make-local-variable 'flymake-languagetool-disabled-rules)
+      (add-to-list 'flymake-languagetool-disabled-rules id))
+    (when (eq type 'Category)
+      (make-local-variable 'flymake-languagetool-disabled-categories)
+      (add-to-list 'flymake-languagetool-disabled-categories id))
+    (flymake-languagetool--check-buffer)
+    (message "%s %s: (%s) has been disabled" type id desc)
+    (flymake-languagetool--clean-overlay)))
+
+(defun flymake-languagetool--correct (ov choice)
+  (let ((start (overlay-start ov))
+        (end (overlay-end ov)))
+    (delete-region start end)
+    (goto-char start)
+    (insert choice))
+  (flymake-languagetool--clean-overlay))
 
 ;;; Corrections
 
@@ -348,18 +433,24 @@ Use OL as diagnostic if non-nil."
   (if-let (flymake-languagetool-current-cand
            (or ol (flymake-languagetool--ov-at-point)))
       (condition-case nil
-          (when-let ((ov flymake-languagetool-current-cand)
-                     (start (overlay-start ov))
-                     (end (overlay-end ov))
-                     (sugs (flymake-languagetool--suggestions))
-                     (prompt (flymake-diagnostic-text
-                              (overlay-get ov 'flymake-diagnostic)))
-                     (choice (completing-read
-                              (format "Correction (%s): " prompt) sugs)))
-            (delete-region start end)
-            (goto-char start)
-            (insert choice)
-            (setq flymake-languagetool-current-cand nil))
+          (when-let*
+              ((ov flymake-languagetool-current-cand)
+               (type (map-elt (flymake-diagnostic-data
+                               (overlay-get ov 'flymake-diagnostic))
+                              'type))
+               (sugs (flymake-languagetool--suggestions))
+               (prompt (flymake-diagnostic-text
+                        (overlay-get ov 'flymake-diagnostic)))
+               (id (map-elt (flymake-diagnostic-data
+                             (overlay-get ov 'flymake-diagnostic))
+                            'rule-id))
+               (choice (completing-read
+                        (format "Correction (%s): " prompt) sugs)))
+            (pcase choice
+              ("Ignore Rule" (flymake-languagetool--ignore ov id 'Rule))
+              ("Ignore Category"
+               (flymake-languagetool--ignore ov id 'Category))
+              (_ (flymake-languagetool--correct ov choice))))
         (t (flymake-languagetool--clean-overlay)))
     (user-error "No correction at point")))
 

@@ -9,7 +9,7 @@
 
 [![CI](https://github.com/emacs-languagetool/flymake-languagetool/actions/workflows/test.yml/badge.svg)](https://github.com/emacs-languagetool/flymake-languagetool/actions/workflows/test.yml)
 
-## :floppy_disk: Installation
+## Installation
 
 The instruction to use this plugin.
 
@@ -43,23 +43,23 @@ otherwise you can call `flymake-languagetool-maybe-load` like the snippet below.
 (add-hook 'find-file-hook 'flymake-languagetool-maybe-load)
 ```
 
-## :wrench: Configuration
+## Configuration
 
 * `flymake-languagetool-server-jar`
 * `flymake-languagetool-active-modes`
 * `flymake-languagetool-check-spelling`
 * `flymake-languagetool-language` (Default `"en-US"`)
 
-### :book: Spellchecking
+### Spellchecking
 
 LanguageTool’s spellchecking is disabled by default. If
 `flymake-languagetool-check-spelling` is non-nil LanguageTool will check
 for spelling mistakes.
 
-### :straight_ruler: Disabling Rules
+### Disabling Rules & Categories
 
 Specific rules can be disabled using
-`flymake-languagetool--disabled-rules`. For example, LanguageTool's
+`flymake-languagetool-disabled-rules`. For example, LanguageTool's
 whitespace rule can be a bit verbose in `org-mode` and it can be
 disabled by adding its ID to this variable.
 
@@ -69,7 +69,18 @@ disabled by adding its ID to this variable.
 
 The full list of rules and their IDs can be found [here](https://community.languagetool.org/rule/list?lang=en).
 
-### :ballot_box_with_check: Corrections
+
+Similarly, you can disable categories using the
+`flymake-languagetool-disabled-categories` variable. The full list of
+categories can be found in `flymake-languagetool-map`
+
+
+You can also disable rules and categories interactively with the `Ignore`
+option. These rules will be ignored temporarily, for the current buffer
+only.
+
+
+### Corrections
 
 Suggestions from LanguageTool can be applied with:
 
@@ -81,6 +92,14 @@ Suggestions from LanguageTool can be applied with:
 `flymake-languagetool-correct-dwim`: if point is on a
     `flymake-languagetool` error then correct; otherwise, select one
     from the current buffer.
+
+### Categories
+
+By default, `flymake-languagetool` will now provide LanguageTool
+category information for each identified error. If you wish to disable
+this behavior, you can set `flymake-languagetool-use-categories = nil`.
+
+<img align="middle" src="./etc/diagnostics.png" with="500" height="700">
 
 ## Contribute
 
