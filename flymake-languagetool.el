@@ -154,20 +154,25 @@ non-nil."
   :type '(repeat string)
   :group 'flymake-languagetool)
 
-(defvar-local flymake-languagetool--source-buffer nil
-  "Current buffer we are currently using for grammar check.")
-
-(defvar flymake-languagetool--report-fnc nil
-  "Record report function/execution.")
-
-(defvar flymake-languagetool-use-categories t
-  "Report errors with LanguageTool Category.")
-
 (defcustom flymake-languagetool-disabled-categories '()
-  "LanguageTool rules to be disabled by default. "
+  "LanguageTool categories to be disabled by default. "
   :type '(repeat string)
   :group 'flymake-languagetool)
 
+(defcustom flymake-languagetool-use-categories t
+  "Report errors with LanguageTool Category."
+  :type 'boolean
+  :safe #'booleanp
+  :group 'flymake-languagetool)
+
+(defvar-local flymake-languagetool--source-buffer nil
+  "Current buffer we are currently using for grammar check.")
+
+(defvar-local flymake-languagetool--proc-buf nil
+  "Current process we are currently using for grammar check.")
+
+(defvar flymake-languagetool--local nil
+  "Can we reach the local LanguageTool server API?")
 
 (defconst flymake-languagetool-category-map
   '(("CASING" . :casing)
@@ -224,10 +229,9 @@ non-nil."
                  :warning)
                (concat .message " [LanguageTool]")
                ;; add text property for suggested replacements
-               `((suggestions . (,@(seq-map
-                                    (lambda (rep)
-                                      (car (map-values rep)))
-                                    .replacements)))
+               `((suggestions . (,@(seq-map (lambda (rep)
+                                              (car (map-values rep)))
+                                            .replacements)))
                  (rule-id . ,.rule.id)
                  (rule-desc . ,.rule.description)
                  (type . ,.rule.issueType)
@@ -245,84 +249,123 @@ non-nil."
 (defun flymake-languagetool--handle-finished (status source-buffer report-fn)
   "Callback function for LanguageTool process for SOURCE-BUFFER.
 STATUS provided from `url-retrieve'."
-  (when-let ((err (plist-get status :error)))
-    (kill-buffer)
+  (when-let ((err (plist-get status :error))
+             (test (equal (current-buffer) flymake-languagetool--proc-buf)))
     (funcall report-fn :panic :explanation (error-message-string err))
     (error (error-message-string err)))
-  (set-buffer-multibyte t)
-  (goto-char url-http-end-of-headers)
-  (if (equal report-fn flymake-languagetool--report-fnc)
-      (let* ((output (buffer-substring (point) (point-max)))
-             (errors (flymake-languagetool--output-to-errors
-                      output source-buffer))
-             (region (with-current-buffer source-buffer
-                       (cons (point-min) (point-max)))))
-        (save-restriction
-          (widen)
-          (funcall report-fn errors :region region)
-          (setq flymake-languagetool--report-fnc nil)))
-    (flymake-log :warning "Canceling obsolete check %s" source-buffer)))
+  (if (and url-http-end-of-headers
+           (equal (current-buffer)
+                  (with-current-buffer source-buffer
+                    flymake-languagetool--proc-buf)))
+      (let ((output (save-restriction
+                      (set-buffer-multibyte t)
+                      (goto-char url-http-end-of-headers)
+                      (buffer-substring (point) (point-max)))))
+        (with-current-buffer source-buffer
+          (funcall report-fn
+                   (flymake-languagetool--output-to-errors output source-buffer)
+                   :region (cons (point-min) (point-max)))
+          (kill-buffer flymake-languagetool--proc-buf)
+          (setq flymake-languagetool--proc-buf nil)))
+    (with-current-buffer source-buffer
+      (flymake-log :warning "Canceling tha obsolete check %s"
+                   flymake-languagetool--proc-buf))))
 
-(defun flymake-languagetool--check ()
+(defun flymake-languagetool--check (report-fn)
   "Run LanguageTool on the current buffer's contents."
-  (let* ((report-fn flymake-languagetool--report-fnc)
-         (url-request-method "POST")
+  (when (buffer-live-p flymake-languagetool--proc-buf)
+    (flymake-log :warning "Canceling the obsolete check %s"
+                 flymake-languagetool--proc-buf)
+    ;; need to check if buffer has ongoing process or else we may
+    ;; potentially delete the wrong one.
+    (when (get-buffer-process flymake-languagetool--proc-buf)
+      (delete-process (get-buffer-process flymake-languagetool--proc-buf)))
+    (kill-buffer flymake-languagetool--proc-buf)
+    (setq flymake-languagetool--proc-buf nil))
+  (let* ((url-request-method "POST")
          (url-request-extra-headers
           '(("Content-Type" . "application/x-www-form-urlencoded")))
          (source-buffer (current-buffer))
-         (disabled-cats (string-join
-                         flymake-languagetool-disabled-categories ","))
-         (disabled-rules (string-join (append
-                                       flymake-languagetool-disabled-rules
-                                       (unless flymake-languagetool-check-spelling
-                                         flymake-languagetool-spelling-rules))
-                                      ","))
-         (params (list
-                  (list "text" (with-current-buffer source-buffer
-                                 (buffer-substring-no-properties (point-min) (point-max))))
-                  (list "language" flymake-languagetool-language)
-                  (unless (string-empty-p disabled-rules)
-                    (list "disabledRules" disabled-rules))
-                  (unless (string-empty-p disabled-cats)
-                    (list "disabledCategories" disabled-cats))))
+         (disabled-cats
+          (string-join flymake-languagetool-disabled-categories ","))
+         (disabled-rules
+          (string-join (append flymake-languagetool-disabled-rules
+                               (unless flymake-languagetool-check-spelling
+                                 flymake-languagetool-spelling-rules))
+                       ","))
+         (params (list (list "text" (with-current-buffer source-buffer
+                                      (buffer-substring-no-properties
+                                       (point-min) (point-max))))
+                       (list "language" flymake-languagetool-language)
+                       (unless (string-empty-p disabled-rules)
+                         (list "disabledRules" disabled-rules))
+                       (unless (string-empty-p disabled-cats)
+                         (list "disabledCategories" disabled-cats))))
          (url-request-data (url-build-query-string params nil t)))
-    (url-retrieve
-     (concat (or flymake-languagetool-url
-                 (format "http://localhost:%s"
-                         flymake-languagetool-server-port))
-             "/v2/check")
-     #'flymake-languagetool--handle-finished
-     (list source-buffer report-fn) t)))
+    (if (flymake-languagetool--reachable-p)
+        (setq flymake-languagetool--proc-buf
+              (url-retrieve
+               (concat (or flymake-languagetool-url
+                           (format "http://localhost:%s"
+                                   flymake-languagetool-server-port))
+                       "/v2/check")
+               #'flymake-languagetool--handle-finished
+               (list source-buffer report-fn) t))
+      ;; can't reach LanguageTool API, try again. TODO:
+      (sit-for 1)
+      (funcall report-fn '()))))
 
-(defun flymake-languagetool--start ()
+(defun flymake-languagetool--reachable-p ()
+  (let ((res (or flymake-languagetool--local
+                 (condition-case nil
+                     (url-retrieve-synchronously
+                      (concat (or flymake-languagetool-url
+                                  (format "http://localhost:%s"
+                                          flymake-languagetool-server-port))
+                              "/v2/languages")
+                      t)
+                   (file-error nil)))))
+    (when (buffer-live-p res)
+      (kill-buffer res)
+      (setq res t))
+    res))
+
+(defun flymake-languagetool--start-server (report-fn)
   "Start the LanguageTool server if we didn’t already."
-  (if (or (not (or flymake-languagetool-server-command
-                   flymake-languagetool-server-jar))
-          (process-live-p (get-process "languagetool-server")))
-      (flymake-languagetool--check)
-    (let* ((source (current-buffer))
-           (cmd (or flymake-languagetool-server-command
-                    (list "java" "-cp" flymake-languagetool-server-jar
-                          "org.languagetool.server.HTTPServer"
-                          "--port" flymake-languagetool-server-port))))
-      (and (get-buffer " *LanguageTool server*")
-           (kill-buffer " *LanguageTool server*"))
-      (make-process
-       :name "languagetool-server" :noquery t :connection-type 'pipe
-       :buffer " *LanguageTool server*"
-       :command (append cmd flymake-languagetool-server-args)
-       :filter
-       (lambda (proc string)
-         (funcall #'internal-default-process-filter proc string)
-         (when (string-match ".*Server started\n$" string)
-           (with-current-buffer source (flymake-languagetool--check))
-           (set-process-filter proc nil)))))))
+  (let* ((source (current-buffer))
+         (cmd (or flymake-languagetool-server-command
+                  (list "java" "-cp" flymake-languagetool-server-jar
+                        "org.languagetool.server.HTTPServer"
+                        "--port" flymake-languagetool-server-port))))
+    (make-process
+     :name "languagetool-server" :noquery t :connection-type 'pipe
+     :buffer " *LanguageTool server*"
+     :command (append cmd flymake-languagetool-server-args)
+     :filter
+     (lambda (proc string)
+       (funcall #'internal-default-process-filter proc string)
+       (when (string-match ".*Server started\n$" string)
+         (with-current-buffer source
+           (setq flymake-languagetool--local t)
+           (flymake-languagetool--checker report-fn))
+         (set-process-filter proc nil)))
+     :sentinel
+     (lambda (proc _event)
+       (when (memq (process-status proc) '(exit signal))
+         (setq flymake-languagetool--local nil)
+         (kill-buffer (process-buffer proc)))))))
 
 (defun flymake-languagetool--checker (report-fn &rest _args)
   "Diagnostic checker function with REPORT-FN."
-  (setq flymake-languagetool--report-fnc report-fn)
   (setq flymake-languagetool--source-buffer (current-buffer))
-  (flymake-languagetool--start))
+  (cond
+   ((flymake-languagetool--reachable-p)
+    (flymake-languagetool--check report-fn))
+   ((or flymake-languagetool-server-command flymake-languagetool-server-jar)
+    (flymake-languagetool--start-server report-fn))
+   (t (funcall report-fn :panic :explanation
+               (format "Cannot reach LanguageTool URL: %s"
+                       flymake-languagetool-url)))))
 
 (defun flymake-languagetool--ovs (&optional format)
   "List of all `flymake-languagetool' diagnostic overlays."
