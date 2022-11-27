@@ -52,9 +52,10 @@
   :type 'list
   :group 'flymake-languagetool)
 
-(defcustom flymake-languagetool-ignore-faces
+(defcustom flymake-languagetool-ignore-faces-alist
   '((org-mode org-code org-block))
-  "Skip over regions "
+  "Filters out errors if they are of fortified with faces in this alist.
+It is an alist of (major-mode . faces-to-ignore)"
   :type '(alist :key-type symbol
 				:value-type (repeat symbol))
   :group 'flymake-languagetool)
@@ -232,9 +233,8 @@ non-nil."
   "Check grammar ERRORS for SOURCE-BUFFER document."
   (with-current-buffer source-buffer
 	(let (check-list
-		  (faces-to-ignore (cdr (assoc major-mode flymake-languagetool-ignore-faces))))
-	  ;; (message "faces: %s" (list faces-to-ignore
-	  ;; 						   (current-buffer)))
+		  (faces-to-ignore
+		   (cdr (assoc major-mode flymake-languagetool-ignore-faces-alist))))
 	  (dolist (error errors)
 		(let-alist error
 		  (when (or (null faces-to-ignore)
