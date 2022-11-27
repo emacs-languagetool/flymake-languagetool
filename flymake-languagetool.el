@@ -52,6 +52,13 @@
   :type 'list
   :group 'flymake-languagetool)
 
+(defcustom flymake-languagetool-ignore-faces
+  '((org-mode org-code org-block))
+  "Skip over regions "
+  :type '(alist :key-type symbol
+				:value-type (repeat symbol))
+  :group 'flymake-languagetool)
+
 (defcustom flymake-languagetool-url nil
   "The URL for the LanguageTool API we should connect to."
   :type '(choice (const :tag "Auto" nil)
@@ -214,30 +221,39 @@ non-nil."
 (when flymake-languagetool-use-categories
   (flymake-languagetool--category-setup))
 
+;; Ignore some faces
+(defun flymake-languagetool-ignore-at-pos-p (pos faces-to-ignore)
+  (let ((x (get-text-property pos 'face)))
+	(if (listp x)
+		(cl-intersection faces-to-ignore x)
+	  (memq x faces-to-ignore))))
+
 (defun flymake-languagetool--check-all (errors source-buffer)
   "Check grammar ERRORS for SOURCE-BUFFER document."
-  (let (check-list)
-    (dolist (error errors)
-      (let-alist error
-        (push (flymake-make-diagnostic
-               source-buffer
-               (+ .offset 1)
-               (+ .offset .length 1)
-               (if flymake-languagetool-use-categories
-                   (map-elt flymake-languagetool-category-map
-                            .rule.category.id)
-                 :warning)
-               (concat .message " [LanguageTool]")
-               ;; add text property for suggested replacements
-               `((suggestions . (,@(seq-map (lambda (rep)
-                                              (car (map-values rep)))
-                                            .replacements)))
-                 (rule-id . ,.rule.id)
-                 (rule-desc . ,.rule.description)
-                 (type . ,.rule.issueType)
-                 (category . ,.rule.category.id)))
-              check-list)))
-    check-list))
+  (with-current-buffer source-buffer
+	(let (check-list
+		  (faces-to-ignore (cdr (assoc major-mode flymake-languagetool-ignore-faces))))
+	  ;; (message "faces: %s" (list faces-to-ignore
+	  ;; 						   (current-buffer)))
+	  (dolist (error errors)
+		(let-alist error
+		  (when (or (null faces-to-ignore)
+					(not (flymake-languagetool-ignore-at-pos-p
+						  .offset
+						  faces-to-ignore)))
+			(push (flymake-make-diagnostic
+				   source-buffer
+				   (+ .offset 1)
+				   (+ .offset .length 1)
+				   :warning
+				   (concat .message " [LanguageTool]")
+				   ;; add text property for suggested replacements
+				   `((suggestions . ,(seq-map
+									  (lambda (rep)
+										(car (map-values rep)))
+									  .replacements))))
+				  check-list))))
+	  check-list)))
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
   "Parse the JSON data from OUTPUT of LanguageTool. "
