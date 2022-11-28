@@ -34,6 +34,7 @@
 (require 'seq)
 (require 'url)
 (require 'json)
+(require 'cl-lib)
 (require 'flymake)
 
 ;; Dynamically bound.
@@ -50,6 +51,14 @@
   '(text-mode latex-mode org-mode markdown-mode message-mode)
   "List of major mode that work with LanguageTool."
   :type 'list
+  :group 'flymake-languagetool)
+
+(defcustom flymake-languagetool-ignore-faces-alist
+  '((org-mode . (org-code org-block)))
+  "Filters out errors if they are of fortified with faces in this alist.
+It is an alist of (major-mode . faces-to-ignore)"
+  :type '(alist :key-type symbol
+                :value-type (repeat symbol))
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-url nil
@@ -214,29 +223,46 @@ non-nil."
 (when flymake-languagetool-use-categories
   (flymake-languagetool--category-setup))
 
+;; Ignore some faces
+(defun flymake-languagetool--ignore-at-pos-p (pos src-buf
+                                                  faces-to-ignore)
+  "Return non-nil if faces at POS in SRC-BUF intersect FACES-TO-IGNORE."
+  (let ((x (get-text-property pos 'face src-buf)))
+    (if (listp x)
+        (cl-intersection faces-to-ignore x)
+      (memq x faces-to-ignore))))
+
 (defun flymake-languagetool--check-all (errors source-buffer)
   "Check grammar ERRORS for SOURCE-BUFFER document."
-  (let (check-list)
+  (let (check-list
+        (faces-to-ignore
+         (with-current-buffer source-buffer
+           (cdr (assoc major-mode flymake-languagetool-ignore-faces-alist)))))
     (dolist (error errors)
       (let-alist error
-        (push (flymake-make-diagnostic
-               source-buffer
-               (+ .offset 1)
-               (+ .offset .length 1)
-               (if flymake-languagetool-use-categories
-                   (map-elt flymake-languagetool-category-map
-                            .rule.category.id)
-                 :warning)
-               (concat .message " [LanguageTool]")
-               ;; add text property for suggested replacements
-               `((suggestions . (,@(seq-map (lambda (rep)
-                                              (car (map-values rep)))
-                                            .replacements)))
-                 (rule-id . ,.rule.id)
-                 (rule-desc . ,.rule.description)
-                 (type . ,.rule.issueType)
-                 (category . ,.rule.category.id)))
-              check-list)))
+        (when (or (null faces-to-ignore)
+                  (not (flymake-languagetool--ignore-at-pos-p
+                        (+ .offset 1)
+                        source-buffer
+                        faces-to-ignore)))
+          (push (flymake-make-diagnostic
+                 source-buffer
+                 (+ .offset 1)
+                 (+ .offset .length 1)
+                 (if flymake-languagetool-use-categories
+                     (map-elt flymake-languagetool-category-map
+                              .rule.category.id)
+                   :warning)
+                 (concat .message " [LanguageTool]")
+                 ;; add text property for suggested replacements
+                 `((suggestions . (,@(seq-map (lambda (rep)
+                                                (car (map-values rep)))
+                                              .replacements)))
+                   (rule-id . ,.rule.id)
+                   (rule-desc . ,.rule.description)
+                   (type . ,.rule.issueType)
+                   (category . ,.rule.category.id)))
+                check-list))))
     check-list))
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
