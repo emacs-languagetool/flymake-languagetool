@@ -1,0 +1,19 @@
+#+TITLE: Example Text
+ 
+LanguageTool is your intelligent writing assistant for all common
+browsers and word processors. Write or paste your text here too have it
+checked continuously. Errors will be underlined in different colours: we
+will mark aint seplling errors with red underilnes. Furthermore grammar
+error's are highlighted in yellow. LanguageTool also marks style issues
+a reliable manner by underlining them in blue. did you know that you
+a word? Its a impressively versatile
+tool if youd like to tell a colleague from over sea's about
+at 5 PM in the afternoon on Monday, 27 May 2007.
+
+Don’t forget to put on the breaks.
+
+Moreover, hour new office will be bigger than before.
+
+I didn’t no the answer, but he person told me the correct answer. We
+want too go to the museum no, but Peter isn’t here yet. Sara past the
+test yesterday. I lent him same money. Please turn of your phones.

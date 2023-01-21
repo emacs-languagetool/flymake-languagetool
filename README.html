@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+<title>README.html</title>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+
+</head>
+
+<body>
+
+<p><a href="https://www.gnu.org/licenses/gpl-3.0"><img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg" alt="License: GPL v3" /></a>
+<a href="https://melpa.org/#/flymake-languagetool"><img src="https://melpa.org/packages/flymake-languagetool-badge.svg" alt="MELPA" /></a>
+<a href="https://stable.melpa.org/#/flymake-languagetool"><img src="https://stable.melpa.org/packages/flymake-languagetool-badge.svg" alt="MELPA Stable" /></a></p>
+
+<p><img align="right" src="./etc/logo.png" with="138" height="46"></p>
+
+<h1>flymake-languagetool</h1>
+
+<blockquote><p>Flymake support for LanguageTool.</p></blockquote>
+
+<p><a href="https://github.com/emacs-languagetool/flymake-languagetool/actions/workflows/test.yml"><img src="https://github.com/emacs-languagetool/flymake-languagetool/actions/workflows/test.yml/badge.svg" alt="CI" /></a></p>
+
+<h2>Installation</h2>
+
+<p>The instruction to use this plugin.</p>
+
+<ol>
+<li>Download LanguageTool from https://languagetool.org/download/ and
+extract on to your local machine (skip this step if using a remote
+server).</li>
+<li>Consider adding the following snippet to your configuration.</li>
+</ol>
+
+
+<p>```el
+(use-package flymake-languagetool
+  :ensure t
+  :hook ((text-mode       . flymake-languagetool-load)
+         (latex-mode      . flymake-languagetool-load)
+         (org-mode        . flymake-languagetool-load)
+         (markdown-mode   . flymake-languagetool-load))
+  :init
+  ;; Remote server config with LanguageTool&rsquo;s free API
+  ;; (setq flymake-languagetool-url &ldquo;https://api.languagetool.org&rdquo;)
+  ;; (setq flymake-languagetool-server-port nil)
+  ;; (setq flymake-languagetool-server-jar nil)</p>
+
+<p>  ;; Local server config
+  (setq flymake-languagetool-server-jar &ldquo;path/to/LanguageTool-X.X/languagetool-server.jar&rdquo;))
+```</p>
+
+<ol>
+<li>:tada: Done! Now open a text file and hit <code>M-x flymake-mode</code>!</li>
+</ol>
+
+
+<p>otherwise you can call <code>flymake-languagetool-maybe-load</code> like the snippet below.</p>
+
+<p><code>el
+(add-hook 'find-file-hook 'flymake-languagetool-maybe-load)
+</code></p>
+
+<h2>Configuration</h2>
+
+<ul>
+<li><code>flymake-languagetool-server-jar</code></li>
+<li><code>flymake-languagetool-active-modes</code></li>
+<li><code>flymake-languagetool-check-spelling</code></li>
+<li><code>flymake-languagetool-language</code> (Default <code>"en-US"</code>)</li>
+</ul>
+
+
+<h3>Spellchecking</h3>
+
+<p>LanguageTool’s spellchecking is disabled by default. If
+<code>flymake-languagetool-check-spelling</code> is non-nil LanguageTool will check
+for spelling mistakes.</p>
+
+<h3>Disabling Rules</h3>
+
+<p>Specific rules can be disabled using
+<code>flymake-languagetool--disabled-rules</code>. For example, LanguageTool&rsquo;s
+whitespace rule can be a bit verbose in <code>org-mode</code> and it can be
+disabled by adding its ID to this variable.</p>
+
+<p><code>el
+(push "WHITESPACE_RULE" flymake-languagetool--disabled-rules)
+</code></p>
+
+<p>The full list of rules and their IDs can be found <a href="https://community.languagetool.org/rule/list?lang=en">here</a>.</p>
+
+<p>You can also disable rules using..</p>
+
+<h3>Corrections</h3>
+
+<p>Suggestions from LanguageTool can be applied with:</p>
+
+<p><code>flymake-languagetool-correct</code>: select error in current buffer with
+    completing read</p>
+
+<p><code>flymake-languagetool-correct-at-point</code>: correct error at point</p>
+
+<p><code>flymake-languagetool-correct-dwim</code>: if point is on a
+    <code>flymake-languagetool</code> error then correct; otherwise, select one
+    from the current buffer.</p>
+
+<h3>Categories</h3>
+
+<p>By default, <code>flymake-languagetool</code> will now provide LanguageTool
+category information for each identified error. If you wish to disable
+this behavior, you can set <code>flymake-languagetool-use-categories = nil</code>.</p>
+
+<p><img align="middle" src="./etc/diagnostics.png" with="500" height="700"></p>
+
+<h2>Contribute</h2>
+
+<p><a href="http://makeapullrequest.com"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" /></a>
+<a href="https://github.com/bbatsov/emacs-lisp-style-guide"><img src="https://img.shields.io/badge/elisp-style%20guide-purple" alt="Elisp styleguide" /></a>
+<a href="https://www.paypal.me/jcs090218"><img src="https://img.shields.io/badge/paypal-donate-1?logo=paypal&amp;color=blue" alt="Donate on paypal" /></a>
+<a href="https://www.patreon.com/jcs090218"><img src="https://img.shields.io/badge/patreon-become%20a%20patron-orange.svg?logo=patreon" alt="Become a patron" /></a></p>
+
+<p>If you would like to contribute to this project, you may either
+clone and make pull requests to this repository. Or you can
+clone the project and establish your own branch of this tool.
+Any methods are welcome!</p>
+
+</body>
+</html>

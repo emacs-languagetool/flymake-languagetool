@@ -238,12 +238,12 @@ non-nil."
     (dolist (error errors)
       (let-alist error
         (unless (and faces (flymake-languagetool--ignore-at-pos-p
-                            (+ .offset 1)
+                            (+ .offset (point-min))
                             source-buffer faces))
           (push (flymake-make-diagnostic
                  source-buffer
-                 (+ .offset 1)
-                 (+ .offset .length 1)
+                 (+ .offset (point-min))
+                 (+ .offset .length (point-min))
                  (if flymake-languagetool-use-categories
                      (map-elt flymake-languagetool-category-map
                               .rule.category.id)
