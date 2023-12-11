@@ -9,7 +9,7 @@
 
 [![CI](https://github.com/emacs-languagetool/flymake-languagetool/actions/workflows/test.yml/badge.svg)](https://github.com/emacs-languagetool/flymake-languagetool/actions/workflows/test.yml)
 
-## Installation
+## 💾 Installation
 
 The instruction to use this plugin.
 
@@ -43,12 +43,12 @@ otherwise you can call `flymake-languagetool-maybe-load` like the snippet below.
 (add-hook 'find-file-hook 'flymake-languagetool-maybe-load)
 ```
 
-## Configuration
+## 🧪 Configuration
 
-* `flymake-languagetool-server-jar`
-* `flymake-languagetool-active-modes`
-* `flymake-languagetool-check-spelling`
-* `flymake-languagetool-language` (Default `"en-US"`)
+- `flymake-languagetool-server-jar`
+- `flymake-languagetool-active-modes`
+- `flymake-languagetool-check-spelling`
+- `flymake-languagetool-language` (Default `"en-US"`)
 
 ### Spellchecking
 
@@ -69,16 +69,13 @@ disabled by adding its ID to this variable.
 
 The full list of rules and their IDs can be found [here](https://community.languagetool.org/rule/list?lang=en).
 
-
 Similarly, you can disable categories using the
 `flymake-languagetool-disabled-categories` variable. The full list of
 categories can be found in `flymake-languagetool-map`
 
-
 You can also disable rules and categories interactively with the `Ignore`
 option. These rules will be ignored temporarily, for the current buffer
 only.
-
 
 ### Corrections
 
@@ -101,7 +98,7 @@ this behavior, you can set `flymake-languagetool-use-categories = nil`.
 
 <img align="middle" src="./etc/diagnostics.png" with="500" height="700">
 
-## Contribute
+## 🛠️ Contribute
 
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 [![Elisp styleguide](https://img.shields.io/badge/elisp-style%20guide-purple)](https://github.com/bbatsov/emacs-lisp-style-guide)
@@ -112,3 +109,62 @@ If you would like to contribute to this project, you may either
 clone and make pull requests to this repository. Or you can
 clone the project and establish your own branch of this tool.
 Any methods are welcome!
+
+### 🔬 Development
+
+To run the test locally, you will need the following tools:
+
+- [Eask](https://emacs-eask.github.io/)
+- [Make](https://www.gnu.org/software/make/) (optional)
+
+Install all dependencies and development dependencies:
+
+```sh
+$ eask install-deps --dev
+```
+
+To test the package's installation:
+
+```sh
+$ eask package
+$ eask install
+```
+
+To test compilation:
+
+```sh
+$ eask compile
+```
+
+**🪧 The following steps are optional, but we recommend you follow these lint results!**
+
+The built-in `checkdoc` linter:
+
+```sh
+$ eask lint checkdoc
+```
+
+The standard `package` linter:
+
+```sh
+$ eask lint package
+```
+
+*📝 P.S. For more information, find the Eask manual at https://emacs-eask.github.io/.*
+
+## ⚜️ License
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+See [`LICENSE`](./LICENSE.txt) for details.
