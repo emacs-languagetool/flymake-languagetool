@@ -388,16 +388,20 @@ STATUS provided from `url-retrieve'."
                (format "Cannot reach LanguageTool URL: %s"
                        flymake-languagetool-url)))))
 
+(defun flymake-languagetool--overlay-p (overlay)
+  "Return t if OVERLAY is a `flymake-languagetool' diagnostic overlay."
+  (when-let* ((diag (overlay-get overlay 'flymake-diagnostic))
+	      (backend (flymake-diagnostic-backend diag)))
+    (eq backend 'flymake-languagetool--checker)))
+
 (defun flymake-languagetool--ovs (&optional format)
   "List of all `flymake-languagetool' diagnostic overlays."
   (let* ((n 1)
-         (ovs (flymake--overlays
-               :filter (lambda (ov)
-                         (when-let ((diag (overlay-get ov 'flymake-diagnostic)))
-                           (eq (flymake-diagnostic-backend diag)
-                               'flymake-languagetool--checker)))
-               :compare (if (cl-plusp n) #'< #'>)
-               :key #'overlay-start)))
+	 (lt-ovs (seq-filter #'flymake-languagetool--overlay-p
+			     (overlays-in (point-min) (point-max))))
+	 (ovs (seq-sort-by #'overlay-start
+			   (if (cl-plusp n) #'< #'>)
+			   lt-ovs)))
     (if format
         (seq-map
          (lambda (ov) (cons (format "%s: %s"
@@ -414,13 +418,8 @@ STATUS provided from `url-retrieve'."
 (defun flymake-languagetool--ov-at-point ()
   "Return `flymake-languagetool' overlay at point."
   (setq flymake-languagetool-current-cand
-        (car (flymake--overlays
-              :beg (point)
-              :filter
-              (lambda (ov)
-                (let ((diag (overlay-get ov 'flymake-diagnostic)))
-                  (eq (flymake-diagnostic-backend diag)
-                      'flymake-languagetool--checker)))))))
+	(car (seq-filter #'flymake-languagetool--overlay-p
+			 (overlays-at (point))))))
 
 (defun flymake-languagetool--suggestions ()
   "Show corrections suggested from LanguageTool."
