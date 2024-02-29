@@ -228,6 +228,8 @@ non-nil."
            (put cat 'flymake-bitmap 'flymake-warning-bitmap)
            (put cat 'severity (warning-numeric-level :warning))
            (put cat 'mode-line-face 'compilation-warning)
+	   (put cat 'echo-face 'flymake-warning-echo)
+	   (put cat 'eol-face 'flymake-warning-echo-at-eol)
            (put cat 'flymake-type-name name)))
 
 (when flymake-languagetool-use-categories
