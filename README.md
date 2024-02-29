@@ -13,11 +13,14 @@
 
 The instruction to use this plugin.
 
-1. Download LanguageTool from https://languagetool.org/download/ and
-   extract on to your local machine (skip this step if using a remote
-   server).
-2. Consider adding the following snippet to your configuration.
+1. **For a Local Server:** Download LanguageTool from https://languagetool.org/download/ and
+   extract on to your local machine.
+   **For a Remote Server:** If you are using LanguageTool's API and have a premium
+   account you will need your username and an api key you can generate
+   here https://languagetool.org/editor/settings/access-tokens
+2. Consider adding one of the following snippets to your configuration.
 
+#### Local LanguageTool Server
 ```el
 (use-package flymake-languagetool
   :ensure t
@@ -26,13 +29,39 @@ The instruction to use this plugin.
          (org-mode        . flymake-languagetool-load)
          (markdown-mode   . flymake-languagetool-load))
   :init
-  ;; Remote server config with LanguageTool's free API
-  ;; (setq flymake-languagetool-url "https://api.languagetool.org")
-  ;; (setq flymake-languagetool-server-port nil)
-  ;; (setq flymake-languagetool-server-jar nil)
+  ;; Local Server Configuration
+  (setq flymake-languagetool-server-jar
+	"path/to/LanguageTool-X.X/languagetool-server.jar"))
+```
 
-  ;; Local server config
-  (setq flymake-languagetool-server-jar "path/to/LanguageTool-X.X/languagetool-server.jar"))
+#### Free LanguageTool Account
+```el
+(use-package flymake-languagetool
+  :ensure t
+  :hook ((text-mode       . flymake-languagetool-load)
+         (latex-mode      . flymake-languagetool-load)
+         (org-mode        . flymake-languagetool-load)
+         (markdown-mode   . flymake-languagetool-load))
+  :init
+  ;; LanguageTools API Remote Server Configuration
+  (setq flymake-languagetool-server-jar nil)
+  (setq flymake-languagetool-url "https://api.languagetool.org"))
+```
+
+#### Premium LanguageTool Account
+```el
+(use-package flymake-languagetool
+  :ensure t
+  :hook ((text-mode       . flymake-languagetool-load)
+         (latex-mode      . flymake-languagetool-load)
+         (org-mode        . flymake-languagetool-load)
+         (markdown-mode   . flymake-languagetool-load))
+  :init
+  ;; If using Premium Version provide the following information
+  (setq flymake-languagetool-server-jar nil)
+  (setq flymake-languagetool-url "https://api.languagetoolplus.com")
+  (setq flymake-languagetool-api-username "myusername")
+  (setq flymake-languagetool-api-key "APIKEY"))
 ```
 
 3. :tada: Done! Now open a text file and hit `M-x flymake-mode`!

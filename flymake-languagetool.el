@@ -67,6 +67,16 @@ It is an alist of (major-mode . faces-to-ignore)"
                  (string :tag "URL"))
   :group 'flymake-languagetool)
 
+(defcustom flymake-languagetool-api-username nil
+  "The username for accessing the Premium LanguageTool API"
+  :type 'string
+  :group 'flymake-languagetool)
+
+(defcustom flymake-languagetool-api-key nil
+  "The API Key for accessing the Premium LanguageTool API"
+  :type 'string
+  :group 'flymake-languagetool)
+
 (defcustom flymake-languagetool-server-jar nil
   "The path of languagetool-server.jar.
 
@@ -321,7 +331,11 @@ STATUS provided from `url-retrieve'."
                        (unless (string-empty-p disabled-rules)
                          (list "disabledRules" disabled-rules))
                        (unless (string-empty-p disabled-cats)
-                         (list "disabledCategories" disabled-cats))))
+                         (list "disabledCategories" disabled-cats))
+                       (when flymake-languagetool-api-username
+                         (list "username" flymake-languagetool-api-username))
+                       (when flymake-languagetool-api-key
+                         (list "apiKey" flymake-languagetool-api-key))))
          (url-request-data (url-build-query-string params nil t)))
     (if (flymake-languagetool--reachable-p)
         (setq flymake-languagetool--proc-buf
