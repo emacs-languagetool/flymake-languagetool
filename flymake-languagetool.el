@@ -54,7 +54,15 @@
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-ignore-faces-alist
-  '((org-mode . (org-code org-block)))
+  '((org-mode . (org-code org-block))
+    (markdown-mode . (markdown-code-face
+		      markdown-inline-code-face markdown-pre-face
+		      markdown-url-face markdown-plain-url-face
+		      markdown-math-face markdown-html-tag-name-face
+		      markdown-html-tag-delimiter-face
+		      markdown-html-attr-name-face
+		      markdown-html-attr-value-face
+		      markdown-html-entity-face)))
   "Filters out errors if they are of fortified with faces in this alist.
 It is an alist of (major-mode . faces-to-ignore)"
   :type '(alist :key-type symbol
