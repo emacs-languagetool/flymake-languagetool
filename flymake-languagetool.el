@@ -56,13 +56,13 @@
 (defcustom flymake-languagetool-ignore-faces-alist
   '((org-mode . (org-code org-block))
     (markdown-mode . (markdown-code-face
-		      markdown-inline-code-face markdown-pre-face
-		      markdown-url-face markdown-plain-url-face
-		      markdown-math-face markdown-html-tag-name-face
-		      markdown-html-tag-delimiter-face
-		      markdown-html-attr-name-face
-		      markdown-html-attr-value-face
-		      markdown-html-entity-face)))
+                      markdown-inline-code-face markdown-pre-face
+                      markdown-url-face markdown-plain-url-face
+                      markdown-math-face markdown-html-tag-name-face
+                      markdown-html-tag-delimiter-face
+                      markdown-html-attr-name-face
+                      markdown-html-attr-value-face
+                      markdown-html-entity-face)))
   "Filters out errors if they are of fortified with faces in this alist.
 It is an alist of (major-mode . faces-to-ignore)"
   :type '(alist :key-type symbol
@@ -236,8 +236,8 @@ non-nil."
            (put cat 'flymake-bitmap 'flymake-warning-bitmap)
            (put cat 'severity (warning-numeric-level :warning))
            (put cat 'mode-line-face 'compilation-warning)
-	   (put cat 'echo-face 'flymake-warning-echo)
-	   (put cat 'eol-face 'flymake-warning-echo-at-eol)
+           (put cat 'echo-face 'flymake-warning-echo)
+           (put cat 'eol-face 'flymake-warning-echo-at-eol)
            (put cat 'flymake-type-name name)))
 
 (when flymake-languagetool-use-categories
@@ -415,14 +415,14 @@ STATUS provided from `url-retrieve'."
 (defun flymake-languagetool--overlay-p (overlay)
   "Return t if OVERLAY is a `flymake-languagetool' diagnostic overlay."
   (when-let* ((diag (overlay-get overlay 'flymake-diagnostic))
-	          (backend (flymake-diagnostic-backend diag)))
+              (backend (flymake-diagnostic-backend diag)))
     (eq backend 'flymake-languagetool--checker)))
 
 (defun flymake-languagetool--ovs (&optional format)
   "List of all `flymake-languagetool' diagnostic overlays."
   (let* ((lt-ovs (seq-filter #'flymake-languagetool--overlay-p
-			                 (overlays-in (point-min) (point-max))))
-	     (ovs (seq-sort-by #'overlay-start #'< lt-ovs)))
+                             (overlays-in (point-min) (point-max))))
+         (ovs (seq-sort-by #'overlay-start #'< lt-ovs)))
     (if format
         (seq-map
          (lambda (ov) (cons (format "%s: %s"
@@ -439,8 +439,8 @@ STATUS provided from `url-retrieve'."
 (defun flymake-languagetool--ov-at-point ()
   "Return `flymake-languagetool' overlay at point."
   (setq flymake-languagetool-current-cand
-	    (car (seq-filter #'flymake-languagetool--overlay-p
-			             (overlays-at (point))))))
+        (car (seq-filter #'flymake-languagetool--overlay-p
+                         (overlays-at (point))))))
 
 (defun flymake-languagetool--suggestions ()
   "Show corrections suggested from LanguageTool."
