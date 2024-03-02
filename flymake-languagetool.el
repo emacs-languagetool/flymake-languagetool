@@ -6,7 +6,7 @@
 ;; Authors: Shen, Jen-Chieh <jcs090218@gmail.com>, Trey Peacock <git@treypeacock.com>
 ;; URL: https://github.com/emacs-languagetool/flymake-languagetool
 ;; Version: 0.2.0
-;; Package-Requires: ((emacs "27.1"))
+;; Package-Requires: ((emacs "28.1"))
 ;; Keywords: convenience grammar check
 
 ;; This file is NOT part of GNU Emacs.
@@ -31,10 +31,10 @@
 
 ;;; Code:
 
-(require 'seq)
-(require 'url)
-(require 'json)
 (require 'cl-lib)
+(require 'seq)
+(require 'json)
+(require 'url)
 (require 'flymake)
 
 ;; Dynamically bound.
@@ -171,8 +171,7 @@ If non-nil, this list of strings replaces the standard java cli command."
     "MORFOLOGIK_RULE_UK_UA"
     "SYMSPELL_RULE")
   "LanguageTool rules for checking of spelling.
-These rules will be enabled if `flymake-languagetool-check-spelling' is
-non-nil."
+These rules will be enabled if `flymake-languagetool-check-spelling' is non-nil."
   :type '(repeat string)
   :group 'flymake-languagetool)
 
@@ -202,29 +201,32 @@ non-nil."
   "Can we reach the local LanguageTool server API?")
 
 (defconst flymake-languagetool-category-map
-  '(("CASING" . :casing)
-    ("COLLOQUIALISMS" . :colloquialisms)
-    ("COMPOUNDING" . :compounding)
-    ("CONFUSED_WORDS" . :confused-words)
-    ("FALSE_FRIENDS" . :false-friends)
+  '(("CASING"            . :casing)
+    ("COLLOQUIALISMS"    . :colloquialisms)
+    ("COMPOUNDING"       . :compounding)
+    ("CONFUSED_WORDS"    . :confused-words)
+    ("FALSE_FRIENDS"     . :false-friends)
     ("GENDER_NEUTRALITY" . :gender-neutrality)
-    ("GRAMMAR" . :grammar)
-    ("MISC" . :misc)
-    ("PLAIN_ENGLISH" . :plain-english)
-    ("PUNCTUATION" . :punctuation)
-    ("REDUNDANCY" . :redundancy)
-    ("REGIONALISMS" . :regionalisms)
-    ("REPETITIONS" . :repetitions)
+    ("GRAMMAR"           . :grammar)
+    ("MISC"              . :misc)
+    ("PLAIN_ENGLISH"     . :plain-english)
+    ("PUNCTUATION"       . :punctuation)
+    ("REDUNDANCY"        . :redundancy)
+    ("REGIONALISMS"      . :regionalisms)
+    ("REPETITIONS"       . :repetitions)
     ("REPETITIONS_STYLE" . :repetitions-style)
-    ("SEMANTICS" . :semantics)
-    ("STYLE" . :style)
-    ("TYPOGRAPHY" . :typography)
-    ("TYPOS" . :typos)
-    ("WIKIPEDIA" . :wikipedia))
-  ;; https://languagetool.org/development/api/org/languagetool/rules/Categories.html
-  "LanguageTool category mappings")
+    ("SEMANTICS"         . :semantics)
+    ("STYLE"             . :style)
+    ("TYPOGRAPHY"        . :typography)
+    ("TYPOS"             . :typos)
+    ("WIKIPEDIA"         . :wikipedia))
+  "LanguageTool category mappings.
 
+See https://languagetool.org/development/api/org/languagetool/rules/Categories.html.")
+
+;;
 ;;; Util
+
 (defun flymake-languagetool--category-setup ()
   "Setup LanguageTool categories as Flymake types."
   (cl-loop for (n . key) in flymake-languagetool-category-map
@@ -361,6 +363,7 @@ STATUS provided from `url-retrieve'."
       (funcall report-fn '()))))
 
 (defun flymake-languagetool--reachable-p ()
+  "TODO: Document this."
   (let ((res (or flymake-languagetool--local
                  (condition-case nil
                      (url-retrieve-synchronously
@@ -458,10 +461,12 @@ STATUS provided from `url-retrieve'."
   (setq flymake-languagetool-current-cand nil))
 
 (defun flymake-languagetool--check-buffer ()
+  "TODO: Document this."
   (when (bound-and-true-p flymake-mode)
     (flymake-start)))
 
 (defun flymake-languagetool--ignore (ov id type)
+  "TODO: Document this."
   (let ((desc (map-elt (flymake-diagnostic-data
                         (overlay-get ov 'flymake-diagnostic))
                        'rule-desc)))
@@ -476,6 +481,7 @@ STATUS provided from `url-retrieve'."
     (flymake-languagetool--clean-overlay)))
 
 (defun flymake-languagetool--correct (ov choice)
+  "TODO: Document this."
   (let ((start (overlay-start ov))
         (end (overlay-end ov)))
     (delete-region start end)
@@ -483,6 +489,7 @@ STATUS provided from `url-retrieve'."
     (insert choice))
   (flymake-languagetool--clean-overlay))
 
+;;
 ;;; Corrections
 
 ;;;###autoload
@@ -562,7 +569,7 @@ Use OL as diagnostic if non-nil."
       (funcall #'flymake-languagetool-correct-at-point ov)
     (funcall-interactively #'flymake-languagetool-correct)))
 
-
+;;
 ;;; Entry
 
 ;;;###autoload
