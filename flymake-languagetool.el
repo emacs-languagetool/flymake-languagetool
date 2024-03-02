@@ -294,14 +294,24 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
 (defun flymake-languagetool--handle-finished (status source-buffer report-fn)
   "Callback function for LanguageTool process for SOURCE-BUFFER.
 STATUS provided from `url-retrieve'."
-  (when-let ((err (plist-get status :error))
-             (test (equal (current-buffer) flymake-languagetool--proc-buf)))
-    (funcall report-fn :panic :explanation (error-message-string err))
-    (error (error-message-string err)))
-  (if (and url-http-end-of-headers
-           (equal (current-buffer)
-                  (with-current-buffer source-buffer
-                    flymake-languagetool--proc-buf)))
+  (let* ((err (plist-get status :error))
+         (c-buf (current-buffer))
+         (proc-buf (buffer-local-value 'flymake-languagetool--proc-buf
+                                       source-buffer))
+         (proc-current (equal c-buf proc-buf)))
+    (cond
+     ((and proc-current err)
+      ;; Ignore errors about deleted processes since they are obsolete
+      ;; calls deleted by `flymake-languagetool--check'
+      (unless (equal "deleted" (string-trim (nth 2 err)))
+        (with-current-buffer source-buffer
+          ;; for some reason the 2nd element in error list is a
+          ;; symbol. This needs to be changed to string to reflect in
+          ;; `error-message-string'
+          (setf (nth 1 err) (symbol-name (nth 1 err)))
+          (funcall report-fn :panic :explanation
+                   (format "%s: %s" c-buf (error-message-string err))))))
+     ((and proc-current url-http-end-of-headers)
       (let ((output (save-restriction
                       (set-buffer-multibyte t)
                       (goto-char url-http-end-of-headers)
@@ -309,25 +319,23 @@ STATUS provided from `url-retrieve'."
         (with-current-buffer source-buffer
           (funcall report-fn
                    (flymake-languagetool--output-to-errors output source-buffer)
-                   :region (cons (point-min) (point-max)))
-          (kill-buffer flymake-languagetool--proc-buf)
-          (setq flymake-languagetool--proc-buf nil)))
-    (with-current-buffer source-buffer
-      (flymake-log :warning "Canceling tha obsolete check %s"
-                   flymake-languagetool--proc-buf))))
+                   :region (cons (point-min) (point-max))))))
+     ((not proc-current)
+      (with-current-buffer source-buffer
+        (flymake-log :warning "Cancelling obsolete check"))))))
 
-(defun flymake-languagetool--check (report-fn)
-  "Run LanguageTool on the current buffer's content.
+(defun flymake-languagetool--check (report-fn text)
+  "Run LanguageTool on TEXT from current buffer's contento.
 The callback function will reply with REPORT-FN."
-  (when (buffer-live-p flymake-languagetool--proc-buf)
+  (when-let ((buf flymake-languagetool--proc-buf))
     (flymake-log :warning "Canceling the obsolete check %s"
                  flymake-languagetool--proc-buf)
     ;; need to check if buffer has ongoing process or else we may
     ;; potentially delete the wrong one.
-    (when (get-buffer-process flymake-languagetool--proc-buf)
-      (delete-process (get-buffer-process flymake-languagetool--proc-buf)))
-    (kill-buffer flymake-languagetool--proc-buf)
-    (setq flymake-languagetool--proc-buf nil))
+    (when-let ((process (get-buffer-process buf)))
+      (delete-process process))
+    (kill-buffer buf)
+    (setf flymake-languagetool--proc-buf nil))
   (let* ((url-request-method "POST")
          (url-request-extra-headers
           '(("Content-Type" . "application/x-www-form-urlencoded")))
@@ -339,9 +347,7 @@ The callback function will reply with REPORT-FN."
                                (unless flymake-languagetool-check-spelling
                                  flymake-languagetool-spelling-rules))
                        ","))
-         (params (list (list "text" (with-current-buffer source-buffer
-                                      (buffer-substring-no-properties
-                                       (point-min) (point-max))))
+         (params (list (list "text" text)
                        (list "language" flymake-languagetool-language)
                        (unless (string-empty-p disabled-rules)
                          (list "disabledRules" disabled-rules))
@@ -362,8 +368,9 @@ The callback function will reply with REPORT-FN."
                #'flymake-languagetool--handle-finished
                (list source-buffer report-fn) t))
       ;; can't reach LanguageTool API, try again. TODO:
-      (sit-for 1)
-      (funcall report-fn '()))))
+      (funcall report-fn :panic :explanation
+               (format "Cannot reach LanguageTool URL: %s"
+                       flymake-languagetool-url)))))
 
 (defun flymake-languagetool--reachable-p ()
   "TODO: Document this."
@@ -410,14 +417,16 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
 (defun flymake-languagetool--checker (report-fn &rest _args)
   "Diagnostic checker function with REPORT-FN."
   (setq flymake-languagetool--source-buffer (current-buffer))
-  (cond
-   ((flymake-languagetool--reachable-p)
-    (flymake-languagetool--check report-fn))
-   ((or flymake-languagetool-server-command flymake-languagetool-server-jar)
-    (flymake-languagetool--start-server report-fn))
-   (t (funcall report-fn :panic :explanation
-               (format "Cannot reach LanguageTool URL: %s"
-                       flymake-languagetool-url)))))
+  (let ((text (buffer-substring-no-properties
+               (point-min) (point-max))))
+    (cond
+     ((flymake-languagetool--reachable-p)
+      (flymake-languagetool--check report-fn text))
+     ((or flymake-languagetool-server-command flymake-languagetool-server-jar)
+      (flymake-languagetool--start-server report-fn))
+     (t (funcall report-fn :panic :explanation
+                 (format "Cannot reach LanguageTool URL: %s"
+                         flymake-languagetool-url))))))
 
 (defun flymake-languagetool--overlay-p (overlay)
   "Return t if OVERLAY is a `flymake-languagetool' diagnostic overlay."
