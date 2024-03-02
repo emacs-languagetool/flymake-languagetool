@@ -66,7 +66,10 @@ The instruction to use this plugin.
 
 3. :tada: Done! Now open a text file and hit `M-x flymake-mode`!
 
-otherwise you can call `flymake-languagetool-maybe-load` like the snippet below.
+Another option is to add `flymake-languagetool-maybe-load` to
+`find-file-hook`, this way `flymake-languagetool` will be enabled
+whenever `flymake-mode` is active and the current major-mode is
+included in `flymake-languagetool-active-modes`.
 
 ```el
 (add-hook 'find-file-hook 'flymake-languagetool-maybe-load)
@@ -74,10 +77,16 @@ otherwise you can call `flymake-languagetool-maybe-load` like the snippet below.
 
 ## 🧪 Configuration
 
-- `flymake-languagetool-server-jar`
-- `flymake-languagetool-active-modes`
-- `flymake-languagetool-check-spelling`
-- `flymake-languagetool-language` (Default `"en-US"`)
+### Language
+The language used for flymake can be customized by using
+`flymake-languagetool-language` (Default `"en-US"`)
+
+### Active Modes
+
+If you are using `flymake-languagetool-maybe-load` you can customize
+which modes `flymake-languagetool` will be enabled for by adding a
+major-mode to `flymake-languagetool-active-modes`. The default value
+is `'(text-mode latex-mode org-mode markdown-mode message-mode)`
 
 ### Spellchecking
 
