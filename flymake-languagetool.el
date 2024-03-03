@@ -506,13 +506,13 @@ Depending on TYPE, either ignore Rule ID or Category ID."
                   (flymake-languagetool--ovs)
                 (nreverse (flymake-languagetool--ovs))))
          (tail (seq-drop-while (lambda (ov) (if (> n 0)
-                                                (< (overlay-start ov) (point))
-                                              (> (overlay-start ov) (point))))
+                                                (<= (overlay-start ov) (point))
+                                              (>= (overlay-start ov) (point))))
                                ovs))
          (chain (if flymake-wrap-around
                     (seq-concatenate 'list tail ovs)
                   tail))
-         (target (nth (abs n) chain)))
+         (target (nth (1- (abs n)) chain)))
     (goto-char (overlay-start target))))
 
 ;;;###autoload
