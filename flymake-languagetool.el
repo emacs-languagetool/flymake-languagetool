@@ -302,16 +302,13 @@ STATUS provided from `url-retrieve'."
          (proc-current (equal c-buf proc-buf)))
     (cond
      ((and proc-current err)
-      ;; Ignore errors about deleted processes since they are obsolete
-      ;; calls deleted by `flymake-languagetool--check'
-      (unless (equal "deleted" (string-trim (nth 2 err)))
-        (with-current-buffer source-buffer
-          ;; for some reason the 2nd element in error list is a
-          ;; symbol. This needs to be changed to string to reflect in
-          ;; `error-message-string'
-          (setf (nth 1 err) (symbol-name (nth 1 err)))
-          (funcall report-fn :panic :explanation
-                   (format "%s: %s" c-buf (error-message-string err))))))
+      (with-current-buffer source-buffer
+        ;; for some reason the 2nd element in error list is a
+        ;; symbol. This needs to be changed to string to reflect in
+        ;; `error-message-string'
+        (setf (nth 1 err) (symbol-name (nth 1 err)))
+        (funcall report-fn :panic :explanation
+                 (format "%s: %s" c-buf (error-message-string err)))))
      ((and proc-current url-http-end-of-headers)
       (let ((output (save-restriction
                       (set-buffer-multibyte t)
@@ -322,11 +319,12 @@ STATUS provided from `url-retrieve'."
                    (flymake-languagetool--output-to-errors output
                                                            source-buffer
                                                            start end)
-                   :region (cons start end)))))
+                   :region (cons start end))))
+      (kill-buffer c-buf))
      ((not proc-current)
       (with-current-buffer source-buffer
-        (flymake-log :warning "Skipping an obsolete check"))))
-    (kill-buffer c-buf)))
+        (flymake-log :warning "Skipping an obsolete check"))
+      (kill-buffer c-buf)))))
 
 (defun flymake-languagetool--check (report-fn text start end)
   "Run LanguageTool on TEXT from current buffer's contento.
@@ -424,6 +422,19 @@ end of following sentence."
       (goto-char pt)
       (funcall forward-sentence-function arg))))
 
+(defun flymake-languagetool--check-length (region)
+  "Ensure character count for REGION complies with api restrictions.
+https://languagetool.org/http-api/"
+  (pcase-let* ((`(,status ,start ,end) region)
+               (size (- end start))
+               (limit (cond (flymake-languagetool-api-key 60000)
+                            ((not (or flymake-languagetool-server-command
+                                      flymake-languagetool-server-jar))
+                             20000))))
+    (if (and limit (> size limit))
+        (list status start (+ start (1- limit)))
+      region)))
+
 (defun flymake-languagetool--check-status (report-fn args)
   "Determine what region has changed and needs to be checked."
   (if (plist-member args :recent-changes)
@@ -434,8 +445,10 @@ end of following sentence."
             (end (or (flymake-languagetool--sentence-point
                       (plist-get args :changes-end) 1)
                      (point-max))))
-        (list changes start end))
-    (list 'start (point-min) (point-max))))
+        (flymake-languagetool--check-length
+         (list changes start end)))
+    (flymake-languagetool--check-length
+     (list 'start (point-min) (point-max)))))
 
 (defun flymake-languagetool--checker (report-fn &rest args)
   "Diagnostic checker function with REPORT-FN."
