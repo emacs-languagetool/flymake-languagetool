@@ -323,7 +323,7 @@ STATUS provided from `url-retrieve'."
       (kill-buffer c-buf))
      ((not proc-current)
       (with-current-buffer source-buffer
-        (flymake-log :warning "Skipping an obsolete check"))
+        (flymake-log :debug "Skipping an obsolete check"))
       (kill-buffer c-buf)))))
 
 (defun flymake-languagetool--check (report-fn text start end)
