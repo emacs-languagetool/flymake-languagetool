@@ -6,7 +6,7 @@
 ;; Authors: Shen, Jen-Chieh <jcs090218@gmail.com>, Trey Peacock <git@treypeacock.com>
 ;; URL: https://github.com/emacs-languagetool/flymake-languagetool
 ;; Version: 0.2.0
-;; Package-Requires: ((emacs "28.1"))
+;; Package-Requires: ((emacs "27.1") (compat "29.1.4.4"))
 ;; Keywords: convenience grammar check
 
 ;; This file is NOT part of GNU Emacs.
@@ -31,8 +31,10 @@
 
 ;;; Code:
 
-(require 'cl-lib)
+(require 'compat)
 (require 'seq)
+(eval-when-compile
+  (require 'cl-lib))
 (require 'json)
 (require 'url)
 (require 'flymake)
@@ -50,7 +52,7 @@
 (defcustom flymake-languagetool-active-modes
   '(text-mode latex-mode org-mode markdown-mode message-mode)
   "List of major mode that work with LanguageTool."
-  :type 'list
+  :type '(repeat symbol)
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-ignore-faces-alist
@@ -76,12 +78,12 @@ It is an alist of (major-mode . faces-to-ignore)"
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-api-username nil
-  "The username for accessing the Premium LanguageTool API"
+  "The username for accessing the Premium LanguageTool API."
   :type 'string
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-api-key nil
-  "The API Key for accessing the Premium LanguageTool API"
+  "The API Key for accessing the Premium LanguageTool API."
   :type 'string
   :group 'flymake-languagetool)
 
@@ -176,12 +178,12 @@ These rules will be enabled if `flymake-languagetool-check-spelling' is non-nil.
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-disabled-rules '()
-  "LanguageTool rules to be disabled by default. "
+  "LanguageTool rules to be disabled by default."
   :type '(repeat string)
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-disabled-categories '()
-  "LanguageTool categories to be disabled by default. "
+  "LanguageTool categories to be disabled by default."
   :type '(repeat string)
   :group 'flymake-languagetool)
 
@@ -250,7 +252,7 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
                                                   faces-to-ignore)
   "Return non-nil if faces at POS in SRC-BUF intersect FACES-TO-IGNORE."
   (let ((x (get-text-property pos 'face src-buf)))
-    (cl-intersection faces-to-ignore (ensure-list x))))
+    (seq-intersection faces-to-ignore (ensure-list x))))
 
 (defun flymake-languagetool--check-all (errors source-buffer)
   "Check grammar ERRORS for SOURCE-BUFFER document."
@@ -283,7 +285,7 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
     check-list))
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
-  "Parse the JSON data from OUTPUT of LanguageTool. "
+  "Parse the JSON data from OUTPUT of LanguageTool analysis of SOURCE-BUFFER."
   (let* ((json-array-type 'list)
          (full-results (json-read-from-string output))
          (errors (cdr (assoc 'matches full-results))))
@@ -315,7 +317,8 @@ STATUS provided from `url-retrieve'."
                    flymake-languagetool--proc-buf))))
 
 (defun flymake-languagetool--check (report-fn)
-  "Run LanguageTool on the current buffer's contents."
+  "Run LanguageTool on the current buffer's content.
+The callback function will reply with REPORT-FN."
   (when (buffer-live-p flymake-languagetool--proc-buf)
     (flymake-log :warning "Canceling the obsolete check %s"
                  flymake-languagetool--proc-buf)
@@ -379,7 +382,8 @@ STATUS provided from `url-retrieve'."
     res))
 
 (defun flymake-languagetool--start-server (report-fn)
-  "Start the LanguageTool server if we didn’t already."
+  "Start the LanguageTool server if we didn’t already.
+Once started call `flymake-languagetool' checker with REPORT-FN."
   (let* ((source (current-buffer))
          (cmd (or flymake-languagetool-server-command
                   (list "java" "-cp" flymake-languagetool-server-jar
@@ -422,7 +426,8 @@ STATUS provided from `url-retrieve'."
     (eq backend 'flymake-languagetool--checker)))
 
 (defun flymake-languagetool--ovs (&optional format)
-  "List of all `flymake-languagetool' diagnostic overlays."
+  "List of all `flymake-languagetool' diagnostic overlays.
+Optionally provide pretty FORMAT for each overlay."
   (let* ((lt-ovs (seq-filter #'flymake-languagetool--overlay-p
                              (overlays-in (point-min) (point-max))))
          (ovs (seq-sort-by #'overlay-start #'< lt-ovs)))
@@ -452,7 +457,7 @@ STATUS provided from `url-retrieve'."
                         (overlay-get flymake-languagetool-current-cand
                                      'flymake-diagnostic))
                        'suggestions)))
-    (cl-remove-if #'null `(,@sugs "Ignore Rule" "Ignore Category"))))
+    (seq-remove #'null `(,@sugs "Ignore Rule" "Ignore Category"))))
 
 (defun flymake-languagetool--clean-overlay ()
   "Remove highlighting of current candidate."
@@ -466,7 +471,8 @@ STATUS provided from `url-retrieve'."
     (flymake-start)))
 
 (defun flymake-languagetool--ignore (ov id type)
-  "TODO: Document this."
+  "Ignore LanguageTool ID at OV.
+Depending on TYPE, either ignore Rule ID or Category ID."
   (let ((desc (map-elt (flymake-diagnostic-data
                         (overlay-get ov 'flymake-diagnostic))
                        'rule-desc)))
@@ -481,7 +487,7 @@ STATUS provided from `url-retrieve'."
     (flymake-languagetool--clean-overlay)))
 
 (defun flymake-languagetool--correct (ov choice)
-  "TODO: Document this."
+  "Replace text in error at OV with CHOICE."
   (let ((start (overlay-start ov))
         (end (overlay-end ov)))
     (delete-region start end)
@@ -496,18 +502,17 @@ STATUS provided from `url-retrieve'."
 (defun flymake-languagetool-next (&optional n)
   "Go to Nth next flymake languagetool error."
   (interactive (list (or current-prefix-arg 1)))
-  (let* ((ovs (flymake-languagetool--ovs))
-         (tail (cl-member-if (lambda (ov)
-                               (if (cl-plusp n)
-                                   (> (overlay-start ov) (point))
-                                 (< (overlay-start ov) (point))))
-                             ovs))
+  (let* ((ovs (if (> n 0)
+                  (flymake-languagetool--ovs)
+                (nreverse (flymake-languagetool--ovs))))
+         (tail (seq-drop-while (lambda (ov) (if (> n 0)
+                                                (< (overlay-start ov) (point))
+                                              (> (overlay-start ov) (point))))
+                               ovs))
          (chain (if flymake-wrap-around
-                    (if tail
-                        (progn (setcdr (last tail) ovs) tail)
-                      (and ovs (setcdr (last ovs) ovs)))
+                    (seq-concatenate 'list tail ovs)
                   tail))
-         (target (nth (1- n) chain)))
+         (target (nth (abs n) chain)))
     (goto-char (overlay-start target))))
 
 ;;;###autoload
@@ -581,7 +586,7 @@ functions."
 
 ;;;###autoload
 (defun flymake-languagetool-maybe-load ()
-  "Load backend if major-mode in `flymake-languagetool-active-modes'"
+  "Load backend if major-mode in `flymake-languagetool-active-modes'."
   (interactive)
   (when (memq major-mode flymake-languagetool-active-modes)
     (flymake-languagetool-load)))
