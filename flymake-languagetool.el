@@ -322,19 +322,17 @@ STATUS provided from `url-retrieve'."
                    :region (cons (point-min) (point-max))))))
      ((not proc-current)
       (with-current-buffer source-buffer
-        (flymake-log :warning "Cancelling obsolete check"))))))
+        (flymake-log :warning "Skipping an obsolete check"))))
+    (kill-buffer c-buf)))
 
 (defun flymake-languagetool--check (report-fn text)
   "Run LanguageTool on TEXT from current buffer's contento.
 The callback function will reply with REPORT-FN."
   (when-let ((buf flymake-languagetool--proc-buf))
-    (flymake-log :warning "Canceling the obsolete check %s"
-                 flymake-languagetool--proc-buf)
     ;; need to check if buffer has ongoing process or else we may
     ;; potentially delete the wrong one.
     (when-let ((process (get-buffer-process buf)))
       (delete-process process))
-    (kill-buffer buf)
     (setf flymake-languagetool--proc-buf nil))
   (let* ((url-request-method "POST")
          (url-request-extra-headers
@@ -412,6 +410,7 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
      (lambda (proc _event)
        (when (memq (process-status proc) '(exit signal))
          (setq flymake-languagetool--local nil)
+         (delete-process proc)
          (kill-buffer (process-buffer proc)))))))
 
 (defun flymake-languagetool--checker (report-fn &rest _args)
