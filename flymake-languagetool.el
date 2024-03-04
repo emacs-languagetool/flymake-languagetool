@@ -197,7 +197,7 @@ These rules will be enabled if `flymake-languagetool-check-spelling' is non-nil.
   "Current buffer we are currently using for grammar check.")
 
 (defvar-local flymake-languagetool--proc-buf nil
-  "Current process we are currently using for grammar check.")
+  "Current process buffer we are currently using for grammar check.")
 
 (defvar-local flymake-languagetool--buf-checked '(nil . 0)
   "Current state of the source buffer.
@@ -318,7 +318,8 @@ continue diagnosing the rest of the buffer."
           ;; to string to reflect in `error-message-string'
           (setf (nth 1 err) (symbol-name err-type))
           (funcall report-fn :panic :explanation
-                   (format "%s: %s" c-buf (error-message-string err))))))
+                   (format "%s: %s" c-buf (error-message-string err)))))
+      (setq-local flymake-languagetool--proc-buf nil))
      ((and proc-current url-http-end-of-headers)
       (let ((output (save-restriction
                       (set-buffer-multibyte t)
@@ -342,7 +343,8 @@ continue diagnosing the rest of the buffer."
                            report-fn (buffer-substring-no-properties n-start n-end)
                            state n-start n-end)
                 (setf (car flymake-languagetool--buf-checked) t))))))
-      (kill-buffer c-buf))
+      (kill-buffer c-buf)
+      (setq-local flymake-languagetool--proc-buf nil))
      ((not proc-current)
       (with-current-buffer source-buffer
         (flymake-log :debug "Skipping an obsolete check"))
@@ -351,12 +353,6 @@ continue diagnosing the rest of the buffer."
 (defun flymake-languagetool--check (report-fn text state start end)
   "Run LanguageTool on TEXT from current buffer's contento.
 The callback function will reply with REPORT-FN."
-  (when-let ((buf flymake-languagetool--proc-buf))
-    ;; need to check if buffer has ongoing process or else we may
-    ;; potentially delete the wrong one.
-    (when-let ((process (get-buffer-process buf)))
-      (delete-process process))
-    (setq-local flymake-languagetool--proc-buf nil))
   (let* ((url-request-method "POST")
          (url-request-extra-headers
           '(("Content-Type" . "application/x-www-form-urlencoded")))
@@ -491,6 +487,15 @@ Function acceps ARGS sent from `flymake' describing potential changes."
   "Diagnostic checker function with REPORT-FN.
 Function acceps ARGS sent from `flymake' describing potential changes."
   (setq-local flymake-languagetool--source-buffer (current-buffer))
+  (when flymake-languagetool--proc-buf
+    ;; need to check if buffer has ongoing process or else we may
+    ;; potentially delete the wrong one.
+    (when-let* ((proc (get-buffer-process flymake-languagetool--proc-buf))
+                (test (process-live-p proc)))
+      (delete-process proc))
+    (when (buffer-live-p flymake-languagetool--proc-buf)
+      (kill-buffer flymake-languagetool--proc-buf))
+    (setq-local flymake-languagetool--proc-buf nil))
   (pcase-let* ((a args)
                (`(,state ,start ,end)
                 (flymake-languagetool--check-state a)))
