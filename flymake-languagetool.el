@@ -258,8 +258,8 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
   (let ((x (get-text-property pos 'face src-buf)))
     (seq-intersection faces-to-ignore (ensure-list x))))
 
-(defun flymake-languagetool--check-all (errors source-buffer start end)
-  "Check grammar ERRORS for SOURCE-BUFFER from START to END."
+(defun flymake-languagetool--check-all (errors source-buffer start)
+  "Check grammar ERRORS for SOURCE-BUFFER from START."
   (let ((faces (alist-get (buffer-local-value 'major-mode source-buffer)
                           flymake-languagetool-ignore-faces-alist))
         check-list)
@@ -288,19 +288,19 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
                 check-list))))
     check-list))
 
-(defun flymake-languagetool--output-to-errors (output source-buffer start end)
+(defun flymake-languagetool--output-to-errors (output source-buffer start)
   "Parse the JSON data from OUTPUT of LanguageTool analysis of SOURCE-BUFFER.
-Region checked is defined by START and END."
+Region checked begins at START."
   (let* ((json-array-type 'list)
          (full-results (json-read-from-string output))
          (errors (cdr (assoc 'matches full-results))))
-    (flymake-languagetool--check-all errors source-buffer start end)))
+    (flymake-languagetool--check-all errors source-buffer start)))
 
 (defun flymake-languagetool--handle-finished (status source-buffer
                                                      report-fn state start end)
   "Callback function for LanguageTool process for SOURCE-BUFFER.
 STATUS provided from `url-retrieve'.  Region checked is defined by START and
-END.  If STATE is 'start then this will call `flymake-languagetool--check' to
+END.  If STATE is start then this will call `flymake-languagetool--check' to
 continue diagnosing the rest of the buffer."
   (let* ((err (plist-get status :error))
          (err-type (nth 1 err))
@@ -328,7 +328,7 @@ continue diagnosing the rest of the buffer."
           (funcall report-fn
                    (flymake-languagetool--output-to-errors output
                                                            source-buffer
-                                                           start end)
+                                                           start)
                    :region (cons start end))
           ;; When the buffer is larger than the api limit, we need to send the
           ;; remaining portion back to LanguageTool.
