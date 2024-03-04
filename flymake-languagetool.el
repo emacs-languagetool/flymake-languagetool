@@ -448,9 +448,10 @@ A positive ARG will return end point ARG number sentence following PT."
 
 (defun flymake-languagetool--setup ()
   "Used to reset the checked state of the current buffer."
-  (setq-local flymake-languagetool--buf-checked '(nil . 0)
-              flymake-languagetool--proc-buf nil
-              flymake-languagetool--local nil))
+  (setf (car flymake-languagetool--buf-checked) nil
+        (cdr flymake-languagetool--buf-checked) 0
+        flymake-languagetool--proc-buf nil
+        flymake-languagetool--local nil))
 
 (defun flymake-languagetool--check-length (region)
   "Ensure character count for REGION complies with api restrictions.
@@ -686,7 +687,7 @@ Use OL as diagnostic if non-nil."
 This adds the language-tool checker to the list of flymake diagnostic
 functions."
   (add-hook 'flymake-diagnostic-functions #'flymake-languagetool--checker nil t)
-  (add-hook 'flymake-mode-hook #'flymake-languagetool--setup))
+  (add-hook 'flymake-mode-hook #'flymake-languagetool--setup nil t))
 
 ;;;###autoload
 (defun flymake-languagetool-maybe-load ()
