@@ -77,7 +77,14 @@ included in `flymake-languagetool-active-modes`.
 
 ## 🧪 Configuration
 
-### Language
+### Sentence Awareness
+`flymake-languagetool` now uses emacs sentence navigation to send only portions
+of the text that have been modified rather than the entire buffer. In order for
+this to behave in an expected manner, you may have to modify
+`sentence-end-double-space`. The default is set to `true` and may cause some
+contextual issues if you only use a single space to separate sentences.
+
+### language
 The language used for flymake can be customized by using
 `flymake-languagetool-language` (Default `"en-US"`)
 
