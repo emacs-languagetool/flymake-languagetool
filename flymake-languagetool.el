@@ -41,6 +41,7 @@
 
 ;; Dynamically bound.
 (defvar url-http-end-of-headers)
+(defvar forward-sentence-function)
 
 (defgroup flymake-languagetool nil
   "Flymake support for LanguageTool."
