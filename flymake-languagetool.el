@@ -498,10 +498,22 @@ Depending on TYPE, either ignore Rule ID or Category ID."
   "Replace text in error at OV with CHOICE."
   (let ((start (overlay-start ov))
         (end (overlay-end ov)))
+    (undo-boundary)
+    (delete-overlay ov)
     (delete-region start end)
     (goto-char start)
-    (insert choice))
-  (flymake-languagetool--clean-overlay))
+    (insert choice)))
+
+;; Lifted from jinx.el but will ensure users have a somewhat consistent
+;; experience
+(defun flymake-languagetool--correct-setup ()
+  "Ensure that the minibuffer is setup for corrections."
+  (let ((message-log-max nil)
+        (inhibit-message t))
+    (when (and (eq completing-read-function #'completing-read-default)
+               (not (bound-and-true-p vertico-mode))
+               (not (bound-and-true-p icomplete-mode)))
+      (minibuffer-completion-help))))
 
 ;;
 ;;; Corrections
@@ -548,8 +560,11 @@ Use OL as diagnostic if non-nil."
                (id (map-elt (flymake-diagnostic-data
                              (overlay-get ov 'flymake-diagnostic))
                             'rule-id))
-               (choice (completing-read
-                        (format "Correction (%s): " prompt) sugs)))
+               (choice (minibuffer-with-setup-hook
+                           #'flymake-languagetool--correct-setup
+                         (completing-read
+                          (format "Correction (%s): " prompt) sugs nil t nil nil
+                          (car sugs)))))
             (pcase choice
               ("Ignore Rule" (flymake-languagetool--ignore ov id 'Rule))
               ("Ignore Category"
@@ -564,7 +579,9 @@ Use OL as diagnostic if non-nil."
   (interactive)
   (let* ((cands (flymake-languagetool--ovs 'format))
          (cand (if cands
-                   (completing-read "Error: " cands)
+                   (minibuffer-with-setup-hook
+                       #'flymake-languagetool--correct-setup
+                     (completing-read "Error: " cands nil t))
                  (user-error "No candidates")))
          (ov (map-elt cands cand)))
     (save-excursion
