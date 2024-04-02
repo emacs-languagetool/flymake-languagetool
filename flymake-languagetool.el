@@ -441,7 +441,10 @@ A positive ARG will return end point ARG number sentence following PT."
   (when pt
     (save-excursion
       (goto-char pt)
-      (funcall forward-sentence-function arg))))
+      (funcall (or (and (boundp 'forward-sentence-function)
+                        forward-sentence-function)
+                   #'forward-sentence)
+               arg))))
 
 (defun flymake-languagetool--setup ()
   "Used to reset the checked state of the current buffer."
