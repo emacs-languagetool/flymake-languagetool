@@ -1,3 +1,5 @@
+;; -*- mode: eask; lexical-binding: t -*-
+
 (package "flymake-languagetool"
          "0.2.0"
          "Flymake support for LanguageTool")
