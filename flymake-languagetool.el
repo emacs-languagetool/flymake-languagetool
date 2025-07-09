@@ -35,9 +35,24 @@
 (require 'seq)
 (eval-when-compile
   (require 'cl-lib))
-(require 'json)
 (require 'url)
 (require 'flymake)
+
+;; Either use the built-in JSON support or import the `json' library, defining a
+;; compatibility function so we can use the best supported JSON parser.
+(defalias 'flymake-languagetool--parse-json
+  (if (and (fboundp 'json-parse-string)
+           (fboundp 'json-available-p)
+           (json-available-p))
+      (lambda (string)
+        "Parse a json STRING."
+        (json-parse-string string
+                           :array-type 'list
+                           :object-type 'alist
+                           :false-object :json-false
+                           :null-object nil))
+    (require 'json)
+    'json-read-string))
 
 ;; Dynamically bound.
 (defvar url-http-end-of-headers)
@@ -283,8 +298,7 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
   "Parse the JSON data from OUTPUT of LanguageTool analysis of SOURCE-BUFFER."
-  (let* ((json-array-type 'list)
-         (full-results (json-read-from-string output))
+  (let* ((full-results (flymake-languagetool--parse-json output))
          (errors (cdr (assoc 'matches full-results))))
     (flymake-languagetool--check-all errors source-buffer)))
 
