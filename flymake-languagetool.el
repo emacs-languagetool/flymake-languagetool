@@ -193,9 +193,6 @@ These rules will be enabled if `flymake-languagetool-check-spelling' is non-nil.
   :safe #'booleanp
   :group 'flymake-languagetool)
 
-(defvar-local flymake-languagetool--source-buffer nil
-  "Current buffer we are currently using for grammar check.")
-
 (defvar-local flymake-languagetool--proc-buf nil
   "Current process we are currently using for grammar check.")
 
@@ -328,10 +325,10 @@ STATUS provided from `url-retrieve'."
 (defun flymake-languagetool--check (report-fn text)
   "Run LanguageTool on TEXT from current buffer's contento.
 The callback function will reply with REPORT-FN."
-  (when-let ((buf flymake-languagetool--proc-buf))
+  (when-let* ((buf flymake-languagetool--proc-buf))
     ;; need to check if buffer has ongoing process or else we may
     ;; potentially delete the wrong one.
-    (when-let ((process (get-buffer-process buf)))
+    (when-let* ((process (get-buffer-process buf)))
       (delete-process process))
     (setf flymake-languagetool--proc-buf nil))
   (let* ((url-request-method "POST")
@@ -415,7 +412,6 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
 
 (defun flymake-languagetool--checker (report-fn &rest _args)
   "Diagnostic checker function with REPORT-FN."
-  (setq flymake-languagetool--source-buffer (current-buffer))
   (let ((text (buffer-substring-no-properties
                (point-min) (point-max))))
     (cond
@@ -546,8 +542,8 @@ Depending on TYPE, either ignore Rule ID or Category ID."
   "Correct `flymake-languagetool' diagnostic at point.
 Use OL as diagnostic if non-nil."
   (interactive)
-  (if-let (flymake-languagetool-current-cand
-           (or ol (flymake-languagetool--ov-at-point)))
+  (if-let* ((flymake-languagetool-current-cand
+             (or ol (flymake-languagetool--ov-at-point))))
       (condition-case nil
           (when-let*
               ((ov flymake-languagetool-current-cand)
@@ -595,7 +591,7 @@ Use OL as diagnostic if non-nil."
 (defun flymake-languagetool-correct-dwim ()
   "DWIM function for correcting `flymake-languagetool' diagnostics."
   (interactive)
-  (if-let ((ov (flymake-languagetool--ov-at-point)))
+  (if-let* ((ov (flymake-languagetool--ov-at-point)))
       (funcall #'flymake-languagetool-correct-at-point ov)
     (funcall-interactively #'flymake-languagetool-correct)))
 
