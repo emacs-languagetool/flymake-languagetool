@@ -264,12 +264,22 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
                                                   faces-to-ignore)
   "Return non-nil if faces at POS in SRC-BUF intersect FACES-TO-IGNORE."
   (let ((x (get-text-property pos 'face src-buf)))
-    (seq-intersection faces-to-ignore (ensure-list x))))
+    (cl-loop
+     for face in (ensure-list x)
+     when (memq face faces-to-ignore)
+     return t)))
+
+(defun flymake-languagetool--ignored-faces ()
+  "Return the faces that should be ignored in the current buffer."
+  (cl-loop
+   for (mode . faces) in flymake-languagetool-ignore-faces-alist
+   when (derived-mode-p mode)
+   append (ensure-list faces)))
 
 (defun flymake-languagetool--check-all (errors source-buffer)
   "Check grammar ERRORS for SOURCE-BUFFER document."
-  (let ((faces (alist-get (buffer-local-value 'major-mode source-buffer)
-                          flymake-languagetool-ignore-faces-alist))
+  (let ((faces (with-current-buffer source-buffer
+                 (flymake-languagetool--ignored-faces)))
         check-list)
     (dolist (error errors)
       (let-alist error
