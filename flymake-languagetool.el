@@ -79,8 +79,21 @@
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-ignore-faces-alist
-  '((org-mode . (org-code org-block))
+  '((org-mode . (org-code org-verbatim
+                          org-block font-lock-comment-face
+                          org-block-begin-line org-block-end-line
+                          org-special-keyword org-table org-tag))
+    (message-mode . (message-header-cc
+                     message-header-to
+                     message-header-other
+                     message-mml
+                     message-cited-text
+                     message-cited-text-1
+                     message-cited-text-2
+                     message-cited-text-3
+                     message-cited-text-4))
     (markdown-mode . (markdown-code-face
+                      markdown-markup-face
                       markdown-inline-code-face markdown-pre-face
                       markdown-url-face markdown-plain-url-face
                       markdown-math-face markdown-html-tag-name-face
