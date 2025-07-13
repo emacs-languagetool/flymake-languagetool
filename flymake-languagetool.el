@@ -54,6 +54,14 @@
     (require 'json)
     'json-read-string))
 
+(defalias 'flymake-languagetool--serialize-json
+  (if (and (fboundp 'json-serialize)
+           (fboundp 'json-available-p)
+           (json-available-p))
+      'json-serialize
+    (require 'json)
+    'json-encode))
+
 ;; Dynamically bound.
 (defvar url-http-end-of-headers)
 
@@ -260,10 +268,9 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
   (flymake-languagetool--category-setup))
 
 ;; Ignore some faces
-(defun flymake-languagetool--ignore-at-pos-p (pos src-buf
-                                                  faces-to-ignore)
-  "Return non-nil if faces at POS in SRC-BUF intersect FACES-TO-IGNORE."
-  (let ((x (get-text-property pos 'face src-buf)))
+(defun flymake-languagetool--ignore-at-pos-p (pos faces-to-ignore)
+  "Return non-nil if faces at POS intersect FACES-TO-IGNORE."
+  (let ((x (get-text-property pos 'face)))
     (cl-loop
      for face in (ensure-list x)
      when (memq face faces-to-ignore)
@@ -277,34 +284,28 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
    append (ensure-list faces)))
 
 (defun flymake-languagetool--check-all (errors source-buffer offset)
-  "Check grammar ERRORS for SOURCE-BUFFER document, starting at OFFSET."
-  (let ((faces (with-current-buffer source-buffer
-                 (flymake-languagetool--ignored-faces)))
-        check-list)
-    (dolist (error errors)
-      (let-alist error
-        (unless (and faces (flymake-languagetool--ignore-at-pos-p
-                            (+ .offset offset)
-                            source-buffer faces))
-          (push (flymake-make-diagnostic
-                 source-buffer
-                 (+ .offset offset)
-                 (+ .offset .length offset)
-                 (if flymake-languagetool-use-categories
-                     (map-elt flymake-languagetool-category-map
-                              .rule.category.id)
-                   :warning)
-                 (concat .message " [LanguageTool]")
-                 ;; add text property for suggested replacements
-                 `((suggestions . (,@(seq-map (lambda (rep)
-                                                (car (map-values rep)))
-                                              .replacements)))
-                   (rule-id . ,.rule.id)
-                   (rule-desc . ,.rule.description)
-                   (type . ,.rule.issueType)
-                   (category . ,.rule.category.id)))
-                check-list))))
-    check-list))
+  "Report grammar ERRORS for SOURCE-BUFFER document starting at OFFSET."
+  (cl-loop
+   for err in errors
+   collect
+   (let-alist err
+     (flymake-make-diagnostic
+      source-buffer
+      (+ .offset offset)
+      (+ .offset .length offset)
+      (if flymake-languagetool-use-categories
+          (map-elt flymake-languagetool-category-map
+                   .rule.category.id)
+        :warning)
+      (concat .message " [LanguageTool]")
+      ;; add text property for suggested replacements
+      `((suggestions . (,@(seq-map (lambda (rep)
+                                     (car (map-values rep)))
+                                   .replacements)))
+        (rule-id . ,.rule.id)
+        (rule-desc . ,.rule.description)
+        (type . ,.rule.issueType)
+        (category . ,.rule.category.id))))))
 
 (defun flymake-languagetool--output-to-errors (output source-buffer offset)
   "Parse the JSON data from OUTPUT of LanguageTool analysis of SOURCE-BUFFER.
@@ -380,9 +381,10 @@ The callback function will reply with REPORT-FN."
     (if (flymake-languagetool--reachable-p)
         (setq flymake-languagetool--active-checks
               (cl-loop
-               for (beg end text) in changes
+               for (beg end data) in changes
+               for json-data = (flymake-languagetool--serialize-json data)
                for url-request-data = (url-build-query-string
-                                       (cons (list "text" text) params)
+                                       (cons (list "data" json-data) params)
                                        nil t)
                collect
                (url-retrieve url #'flymake-languagetool--handle-finished
@@ -427,7 +429,8 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
            (setq flymake-languagetool--local t)
            (flymake-languagetool--check
             report-fn
-            (list (list (point-min) (point-max) (buffer-string)))))
+            (flymake-languagetool--ranges-to-annotations
+             (list (cons (point-min) (point-max))))))
          (set-process-filter proc nil)))
      :sentinel
      (lambda (proc _event)
@@ -436,28 +439,49 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
          (delete-process proc)
          (kill-buffer (process-buffer proc)))))))
 
-(defun flymake-languagetool--widen-changes (changes)
-  "Widen the given CHANGES to include full paragraphs."
-    (setq changes (sort changes :key #'car :lessp '< :in-place t))
-    (let (widened spans)
-      (save-excursion
-        (dolist (change changes)
-          (let ((beg (progn (goto-char (car change)) (backward-paragraph 2) (point)))
-                (end (progn (goto-char (cadr change)) (forward-paragraph 2) (point))))
-            ;; Merge close and overlapping regions.
-            (if (or (not widened) (< (- beg (cdar widened)) 100))
-                (push (cons beg end) widened)
-              (setf (cdar widened) end)))))
-      (dolist (range widened spans)
-        (push (list (car range) (cdr range)
-                    (buffer-substring (car range) (cdr range)))
-              spans))))
+(defun flymake-languagetool--widen-ranges (ranges)
+  "Widen the given RANGES to includes full paragraphs.
+Overlapping & nearby ranges will be merged."
+  (setq ranges (sort ranges :key #'car :lessp '< :in-place t))
+  (save-excursion
+    (let (widened)
+      (dolist (range ranges)
+        (let ((beg (progn (goto-char (car range)) (backward-paragraph 2) (point)))
+              (end (progn (goto-char (cdr range)) (forward-paragraph 2) (point))))
+          ;; Merge close and overlapping regions.
+          (if (or (not widened) (< (- beg (cdar widened)) 100))
+              (push (cons beg end) widened)
+            (setf (cdar widened) end))))
+      (nreverse widened))))
+
+(defun flymake-languagetool--ranges-to-annotations (ranges)
+  "Convert a list of RANGES (beg . end) into LanguageTool annotations."
+  (cl-loop
+   with faces = (flymake-languagetool--ignored-faces)
+   for (beg . end) in (flymake-languagetool--widen-ranges ranges)
+   do (font-lock-ensure beg end)
+   for offsets = (cl-loop
+                  with was-markup = 'uninitialized
+                  for (fbeg . _) being the intervals
+                  from beg to end property 'face
+                  for is-markup = (flymake-languagetool--ignore-at-pos-p fbeg faces)
+                  unless (eq is-markup was-markup)
+                  do (setq was-markup is-markup)
+                  and collect (cons fbeg is-markup))
+   for annotations = (cl-loop
+                      for ((fbeg . is-markup) (fend . _) . _) on offsets
+                      unless fend do (setq fend end)
+                      collect
+                      (list (cons (if is-markup 'markup 'text)
+                                  (buffer-substring-no-properties fbeg fend))))
+   collect (list beg end (list (cons 'annotation (apply #'vector annotations))))))
 
 (defun flymake-languagetool--get-changes (props)
   "Extract flymake changes from PROPS."
-  (if-let* ((changes (plist-member props :recent-changes)))
-      (flymake-languagetool--widen-changes (cadr changes))
-    (list (list (point-min) (point-max) (buffer-string)))))
+  (flymake-languagetool--ranges-to-annotations
+   (if-let* ((changes (plist-member props :recent-changes)))
+       (cl-loop for (beg end . _) in (cadr changes) collect (cons beg end))
+     (list (cons (point-min) (point-max))))))
 
 (defun flymake-languagetool--checker (report-fn &rest args)
   "Diagnostic checker function with REPORT-FN according to ARGS."
