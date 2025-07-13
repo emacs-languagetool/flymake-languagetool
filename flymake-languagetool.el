@@ -296,16 +296,31 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
    when (derived-mode-p mode)
    append (ensure-list faces)))
 
+(defun flymake-languagetool--pos-to-point (buf offset pos)
+  "Search forward in BUF for the specified text position POS from OFFSET.
+This function correctly handles emoji which count as two characters."
+  (let (case-fold-search)
+    (with-current-buffer buf
+      (save-excursion
+        (setq pos (+ offset pos))
+        (goto-char offset)
+        ;; code points in the "supplementary place" use two code units
+        (while (and (< (point) pos)
+                    (re-search-forward (rx (any (#x010000 .  #x10ffff))) pos t))
+          (setq pos (1- pos)))
+        pos))))
+
 (defun flymake-languagetool--check-all (errors source-buffer offset)
   "Report grammar ERRORS for SOURCE-BUFFER document starting at OFFSET."
   (cl-loop
    for err in errors
+   for beg = (flymake-languagetool--pos-to-point source-buffer offset (alist-get 'offset err))
+   for end = (flymake-languagetool--pos-to-point source-buffer beg (alist-get 'length err))
    collect
    (let-alist err
      (flymake-make-diagnostic
       source-buffer
-      (+ .offset offset)
-      (+ .offset .length offset)
+      beg end
       (if flymake-languagetool-use-categories
           (map-elt flymake-languagetool-category-map
                    .rule.category.id)
