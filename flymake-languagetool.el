@@ -289,6 +289,20 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
    when (derived-mode-p mode)
    append (ensure-list faces)))
 
+(defun flymake-languagetool--pos-to-point (buf offset pos)
+  "Search forward in BUF for the specified text position POS from OFFSET.
+This function correctly handles emoji which count as two characters."
+  (let (case-fold-search)
+    (with-current-buffer buf
+      (save-excursion
+        (setq pos (+ offset pos))
+        (goto-char offset)
+        ;; code points in the "supplementary place" use two code units
+        (while (and (< (point) pos)
+                    (re-search-forward (rx (any (#x010000 .  #x10ffff))) pos t))
+          (setq pos (1- pos)))
+        pos))))
+
 (defun flymake-languagetool--check-all (errors source-buffer)
   "Check grammar ERRORS for SOURCE-BUFFER document."
   (let ((faces (with-current-buffer source-buffer
@@ -296,27 +310,26 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
         check-list)
     (dolist (error errors)
       (let-alist error
-        (unless (and faces (flymake-languagetool--ignore-at-pos-p
-                            (+ .offset (point-min))
-                            source-buffer faces))
-          (push (flymake-make-diagnostic
-                 source-buffer
-                 (+ .offset (point-min))
-                 (+ .offset .length (point-min))
-                 (if flymake-languagetool-use-categories
-                     (map-elt flymake-languagetool-category-map
-                              .rule.category.id)
-                   :warning)
-                 (concat .message " [LanguageTool]")
-                 ;; add text property for suggested replacements
-                 `((suggestions . (,@(seq-map (lambda (rep)
-                                                (car (map-values rep)))
-                                              .replacements)))
-                   (rule-id . ,.rule.id)
-                   (rule-desc . ,.rule.description)
-                   (type . ,.rule.issueType)
-                   (category . ,.rule.category.id)))
-                check-list))))
+        (let* ((beg (flymake-languagetool--pos-to-point source-buffer (point-min) .offset))
+               (end (flymake-languagetool--pos-to-point source-buffer beg .length)))
+          (unless (and faces (flymake-languagetool--ignore-at-pos-p beg source-buffer faces))
+            (push (flymake-make-diagnostic
+                   source-buffer
+                   beg end
+                   (if flymake-languagetool-use-categories
+                       (map-elt flymake-languagetool-category-map
+                                .rule.category.id)
+                     :warning)
+                   (concat .message " [LanguageTool]")
+                   ;; add text property for suggested replacements
+                   `((suggestions . (,@(seq-map (lambda (rep)
+                                                  (car (map-values rep)))
+                                                .replacements)))
+                     (rule-id . ,.rule.id)
+                     (rule-desc . ,.rule.description)
+                     (type . ,.rule.issueType)
+                     (category . ,.rule.category.id)))
+                  check-list)))))
     check-list))
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
