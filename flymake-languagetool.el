@@ -35,9 +35,32 @@
 (require 'seq)
 (eval-when-compile
   (require 'cl-lib))
-(require 'json)
 (require 'url)
 (require 'flymake)
+
+;; Either use the built-in JSON support or import the `json' library, defining a
+;; compatibility function so we can use the best supported JSON parser.
+(defalias 'flymake-languagetool--parse-json
+  (if (and (fboundp 'json-parse-string)
+           (fboundp 'json-available-p)
+           (json-available-p))
+      (lambda (string)
+        "Parse a json STRING."
+        (json-parse-string string
+                           :array-type 'list
+                           :object-type 'alist
+                           :false-object :json-false
+                           :null-object nil))
+    (require 'json)
+    'json-read-string))
+
+(defalias 'flymake-languagetool--serialize-json
+  (if (and (fboundp 'json-serialize)
+           (fboundp 'json-available-p)
+           (json-available-p))
+      'json-serialize
+    (require 'json)
+    'json-encode))
 
 ;; Dynamically bound.
 (defvar url-http-end-of-headers)
@@ -56,8 +79,21 @@
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-ignore-faces-alist
-  '((org-mode . (org-code org-block))
+  '((org-mode . (org-code org-verbatim
+                          org-block font-lock-comment-face
+                          org-block-begin-line org-block-end-line
+                          org-special-keyword org-table org-tag))
+    (message-mode . (message-header-cc
+                     message-header-to
+                     message-header-other
+                     message-mml
+                     message-cited-text
+                     message-cited-text-1
+                     message-cited-text-2
+                     message-cited-text-3
+                     message-cited-text-4))
     (markdown-mode . (markdown-code-face
+                      markdown-markup-face
                       markdown-inline-code-face markdown-pre-face
                       markdown-url-face markdown-plain-url-face
                       markdown-math-face markdown-html-tag-name-face
@@ -193,11 +229,8 @@ These rules will be enabled if `flymake-languagetool-check-spelling' is non-nil.
   :safe #'booleanp
   :group 'flymake-languagetool)
 
-(defvar-local flymake-languagetool--source-buffer nil
-  "Current buffer we are currently using for grammar check.")
-
-(defvar-local flymake-languagetool--proc-buf nil
-  "Current process we are currently using for grammar check.")
+(defvar-local flymake-languagetool--active-checks nil
+  "Active grammar checks process buffers.")
 
 (defvar flymake-languagetool--local nil
   "Can we reach the local LanguageTool server API?")
@@ -248,57 +281,75 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
   (flymake-languagetool--category-setup))
 
 ;; Ignore some faces
-(defun flymake-languagetool--ignore-at-pos-p (pos src-buf
-                                                  faces-to-ignore)
-  "Return non-nil if faces at POS in SRC-BUF intersect FACES-TO-IGNORE."
-  (let ((x (get-text-property pos 'face src-buf)))
-    (seq-intersection faces-to-ignore (ensure-list x))))
+(defun flymake-languagetool--ignore-at-pos-p (pos faces-to-ignore)
+  "Return non-nil if faces at POS intersect FACES-TO-IGNORE."
+  (let ((x (get-text-property pos 'face)))
+    (cl-loop
+     for face in (ensure-list x)
+     when (memq face faces-to-ignore)
+     return t)))
 
-(defun flymake-languagetool--check-all (errors source-buffer)
-  "Check grammar ERRORS for SOURCE-BUFFER document."
-  (let ((faces (alist-get (buffer-local-value 'major-mode source-buffer)
-                          flymake-languagetool-ignore-faces-alist))
-        check-list)
-    (dolist (error errors)
-      (let-alist error
-        (unless (and faces (flymake-languagetool--ignore-at-pos-p
-                            (+ .offset (point-min))
-                            source-buffer faces))
-          (push (flymake-make-diagnostic
-                 source-buffer
-                 (+ .offset (point-min))
-                 (+ .offset .length (point-min))
-                 (if flymake-languagetool-use-categories
-                     (map-elt flymake-languagetool-category-map
-                              .rule.category.id)
-                   :warning)
-                 (concat .message " [LanguageTool]")
-                 ;; add text property for suggested replacements
-                 `((suggestions . (,@(seq-map (lambda (rep)
-                                                (car (map-values rep)))
-                                              .replacements)))
-                   (rule-id . ,.rule.id)
-                   (rule-desc . ,.rule.description)
-                   (type . ,.rule.issueType)
-                   (category . ,.rule.category.id)))
-                check-list))))
-    check-list))
+(defun flymake-languagetool--ignored-faces ()
+  "Return the faces that should be ignored in the current buffer."
+  (cl-loop
+   for (mode . faces) in flymake-languagetool-ignore-faces-alist
+   when (derived-mode-p mode)
+   append (ensure-list faces)))
 
-(defun flymake-languagetool--output-to-errors (output source-buffer)
-  "Parse the JSON data from OUTPUT of LanguageTool analysis of SOURCE-BUFFER."
-  (let* ((json-array-type 'list)
-         (full-results (json-read-from-string output))
+(defun flymake-languagetool--pos-to-point (buf offset pos)
+  "Search forward in BUF for the specified text position POS from OFFSET.
+This function correctly handles emoji which count as two characters."
+  (let (case-fold-search)
+    (with-current-buffer buf
+      (save-excursion
+        (setq pos (+ offset pos))
+        (goto-char offset)
+        ;; code points in the "supplementary place" use two code units
+        (while (and (< (point) pos)
+                    (re-search-forward (rx (any (#x010000 .  #x10ffff))) pos t))
+          (setq pos (1- pos)))
+        pos))))
+
+(defun flymake-languagetool--check-all (errors source-buffer offset)
+  "Report grammar ERRORS for SOURCE-BUFFER document starting at OFFSET."
+  (cl-loop
+   for err in errors
+   for beg = (flymake-languagetool--pos-to-point source-buffer offset (alist-get 'offset err))
+   for end = (flymake-languagetool--pos-to-point source-buffer beg (alist-get 'length err))
+   collect
+   (let-alist err
+     (flymake-make-diagnostic
+      source-buffer
+      beg end
+      (if flymake-languagetool-use-categories
+          (map-elt flymake-languagetool-category-map
+                   .rule.category.id)
+        :warning)
+      (concat .message " [LanguageTool]")
+      ;; add text property for suggested replacements
+      `((suggestions . (,@(seq-map (lambda (rep)
+                                     (car (map-values rep)))
+                                   .replacements)))
+        (rule-id . ,.rule.id)
+        (rule-desc . ,.rule.description)
+        (type . ,.rule.issueType)
+        (category . ,.rule.category.id))))))
+
+(defun flymake-languagetool--output-to-errors (output source-buffer offset)
+  "Parse the JSON data from OUTPUT of LanguageTool analysis of SOURCE-BUFFER.
+Errors start at OFFSET within the SOURCE-BUFFER."
+  (let* ((full-results (flymake-languagetool--parse-json output))
          (errors (cdr (assoc 'matches full-results))))
-    (flymake-languagetool--check-all errors source-buffer)))
+    (flymake-languagetool--check-all errors source-buffer offset)))
 
-(defun flymake-languagetool--handle-finished (status source-buffer report-fn)
+(defun flymake-languagetool--handle-finished (status source-buffer report-fn beg end)
   "Callback function for LanguageTool process for SOURCE-BUFFER.
 STATUS provided from `url-retrieve'."
   (let* ((err (plist-get status :error))
          (c-buf (current-buffer))
-         (proc-buf (buffer-local-value 'flymake-languagetool--proc-buf
-                                       source-buffer))
-         (proc-current (equal c-buf proc-buf)))
+         (active-checks (buffer-local-value 'flymake-languagetool--active-checks
+                                            source-buffer))
+         (proc-current (member c-buf active-checks)))
     (cond
      ((and proc-current err)
       ;; Ignore errors about deleted processes since they are obsolete
@@ -318,22 +369,19 @@ STATUS provided from `url-retrieve'."
                       (buffer-substring (point) (point-max)))))
         (with-current-buffer source-buffer
           (funcall report-fn
-                   (flymake-languagetool--output-to-errors output source-buffer)
-                   :region (cons (point-min) (point-max))))))
+                   (flymake-languagetool--output-to-errors output source-buffer beg)
+                   :region (cons beg end)))))
      ((not proc-current)
       (with-current-buffer source-buffer
         (flymake-log :warning "Skipping an obsolete check"))))
     (kill-buffer c-buf)))
 
-(defun flymake-languagetool--check (report-fn text)
-  "Run LanguageTool on TEXT from current buffer's contento.
+(defun flymake-languagetool--check (report-fn changes)
+  "Run LanguageTool on specified CHANGES to the current buffer.
 The callback function will reply with REPORT-FN."
-  (when-let ((buf flymake-languagetool--proc-buf))
-    ;; need to check if buffer has ongoing process or else we may
-    ;; potentially delete the wrong one.
-    (when-let ((process (get-buffer-process buf)))
-      (delete-process process))
-    (setf flymake-languagetool--proc-buf nil))
+  (while flymake-languagetool--active-checks
+    (when-let* ((process (get-buffer-process (pop flymake-languagetool--active-checks))))
+      (delete-process process)))
   (let* ((url-request-method "POST")
          (url-request-extra-headers
           '(("Content-Type" . "application/x-www-form-urlencoded")))
@@ -345,8 +393,7 @@ The callback function will reply with REPORT-FN."
                                (unless flymake-languagetool-check-spelling
                                  flymake-languagetool-spelling-rules))
                        ","))
-         (params (list (list "text" text)
-                       (list "language" flymake-languagetool-language)
+         (params (list (list "language" flymake-languagetool-language)
                        (unless (string-empty-p disabled-rules)
                          (list "disabledRules" disabled-rules))
                        (unless (string-empty-p disabled-cats)
@@ -355,20 +402,24 @@ The callback function will reply with REPORT-FN."
                          (list "username" flymake-languagetool-api-username))
                        (when flymake-languagetool-api-key
                          (list "apiKey" flymake-languagetool-api-key))))
-         (url-request-data (url-build-query-string params nil t)))
+         (base-url (or flymake-languagetool-url
+                       (format "http://localhost:%s"
+                               flymake-languagetool-server-port)))
+         (url (concat base-url "/v2/check")))
     (if (flymake-languagetool--reachable-p)
-        (setq flymake-languagetool--proc-buf
-              (url-retrieve
-               (concat (or flymake-languagetool-url
-                           (format "http://localhost:%s"
-                                   flymake-languagetool-server-port))
-                       "/v2/check")
-               #'flymake-languagetool--handle-finished
-               (list source-buffer report-fn) t))
+        (setq flymake-languagetool--active-checks
+              (cl-loop
+               for (beg end data) in changes
+               for json-data = (flymake-languagetool--serialize-json data)
+               for url-request-data = (url-build-query-string
+                                       (cons (list "data" json-data) params)
+                                       nil t)
+               collect
+               (url-retrieve url #'flymake-languagetool--handle-finished
+                             (list source-buffer report-fn beg end) t)))
       ;; can't reach LanguageTool API, try again. TODO:
       (funcall report-fn :panic :explanation
-               (format "Cannot reach LanguageTool URL: %s"
-                       flymake-languagetool-url)))))
+               (format "Cannot reach LanguageTool URL: %s" base-url)))))
 
 (defun flymake-languagetool--reachable-p ()
   "TODO: Document this."
@@ -404,7 +455,10 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
        (when (string-match ".*Server started\n$" string)
          (with-current-buffer source
            (setq flymake-languagetool--local t)
-           (flymake-languagetool--checker report-fn))
+           (flymake-languagetool--check
+            report-fn
+            (flymake-languagetool--ranges-to-annotations
+             (list (cons (point-min) (point-max))))))
          (set-process-filter proc nil)))
      :sentinel
      (lambda (proc _event)
@@ -413,19 +467,60 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
          (delete-process proc)
          (kill-buffer (process-buffer proc)))))))
 
-(defun flymake-languagetool--checker (report-fn &rest _args)
-  "Diagnostic checker function with REPORT-FN."
-  (setq flymake-languagetool--source-buffer (current-buffer))
-  (let ((text (buffer-substring-no-properties
-               (point-min) (point-max))))
-    (cond
-     ((flymake-languagetool--reachable-p)
-      (flymake-languagetool--check report-fn text))
-     ((or flymake-languagetool-server-command flymake-languagetool-server-jar)
-      (flymake-languagetool--start-server report-fn))
-     (t (funcall report-fn :panic :explanation
-                 (format "Cannot reach LanguageTool URL: %s"
-                         flymake-languagetool-url))))))
+(defun flymake-languagetool--widen-ranges (ranges)
+  "Widen the given RANGES to includes full paragraphs.
+Overlapping & nearby ranges will be merged."
+  (setq ranges (sort ranges :key #'car :lessp '< :in-place t))
+  (save-excursion
+    (let (widened)
+      (dolist (range ranges)
+        (let ((beg (progn (goto-char (car range)) (backward-paragraph 2) (point)))
+              (end (progn (goto-char (cdr range)) (forward-paragraph 2) (point))))
+          ;; Merge close and overlapping regions.
+          (if (or (not widened) (< (- beg (cdar widened)) 100))
+              (push (cons beg end) widened)
+            (setf (cdar widened) end))))
+      (nreverse widened))))
+
+(defun flymake-languagetool--ranges-to-annotations (ranges)
+  "Convert a list of RANGES (beg . end) into LanguageTool annotations."
+  (cl-loop
+   with faces = (flymake-languagetool--ignored-faces)
+   for (beg . end) in (flymake-languagetool--widen-ranges ranges)
+   do (font-lock-ensure beg end)
+   for offsets = (cl-loop
+                  with was-markup = 'uninitialized
+                  for (fbeg . _) being the intervals
+                  from beg to end property 'face
+                  for is-markup = (flymake-languagetool--ignore-at-pos-p fbeg faces)
+                  unless (eq is-markup was-markup)
+                  do (setq was-markup is-markup)
+                  and collect (cons fbeg is-markup))
+   for annotations = (cl-loop
+                      for ((fbeg . is-markup) (fend . _) . _) on offsets
+                      unless fend do (setq fend end)
+                      collect
+                      (list (cons (if is-markup 'markup 'text)
+                                  (buffer-substring-no-properties fbeg fend))))
+   collect (list beg end (list (cons 'annotation (apply #'vector annotations))))))
+
+(defun flymake-languagetool--get-changes (props)
+  "Extract flymake changes from PROPS."
+  (flymake-languagetool--ranges-to-annotations
+   (if-let* ((changes (plist-member props :recent-changes)))
+       (cl-loop for (beg end . _) in (cadr changes) collect (cons beg end))
+     (list (cons (point-min) (point-max))))))
+
+(defun flymake-languagetool--checker (report-fn &rest args)
+  "Diagnostic checker function with REPORT-FN according to ARGS."
+  (cond
+   ((flymake-languagetool--reachable-p)
+    (flymake-languagetool--check report-fn (flymake-languagetool--get-changes args)))
+   ((or flymake-languagetool-server-command flymake-languagetool-server-jar)
+    (flymake-languagetool--start-server report-fn))
+   (t (funcall report-fn :panic :explanation
+               (format "Cannot reach LanguageTool URL: %s"
+                       flymake-languagetool-url)))))
 
 (defun flymake-languagetool--overlay-p (overlay)
   "Return t if OVERLAY is a `flymake-languagetool' diagnostic overlay."
@@ -546,8 +641,8 @@ Depending on TYPE, either ignore Rule ID or Category ID."
   "Correct `flymake-languagetool' diagnostic at point.
 Use OL as diagnostic if non-nil."
   (interactive)
-  (if-let (flymake-languagetool-current-cand
-           (or ol (flymake-languagetool--ov-at-point)))
+  (if-let* ((flymake-languagetool-current-cand
+             (or ol (flymake-languagetool--ov-at-point))))
       (condition-case nil
           (when-let*
               ((ov flymake-languagetool-current-cand)
@@ -595,7 +690,7 @@ Use OL as diagnostic if non-nil."
 (defun flymake-languagetool-correct-dwim ()
   "DWIM function for correcting `flymake-languagetool' diagnostics."
   (interactive)
-  (if-let ((ov (flymake-languagetool--ov-at-point)))
+  (if-let* ((ov (flymake-languagetool--ov-at-point)))
       (funcall #'flymake-languagetool-correct-at-point ov)
     (funcall-interactively #'flymake-languagetool-correct)))
 
