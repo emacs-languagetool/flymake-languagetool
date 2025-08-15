@@ -17,3 +17,7 @@ Moreover, hour new office will be bigger than before.
 I didn’t no the answer, but he person told me the correct answer. We
 want too go to the museum no, but Peter isn’t here yet. Sara past the
 test yesterday. I lent him same money. Please turn of your phones.
+
+# Local Variables:
+# sentence-end-double-space: nil
+# End:
