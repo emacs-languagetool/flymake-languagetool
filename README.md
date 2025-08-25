@@ -5,6 +5,7 @@
 <img align="right" src="./etc/logo.png" with="138" height="46">
 
 # flymake-languagetool
+
 > Flymake support for LanguageTool.
 
 [![CI](https://github.com/emacs-languagetool/flymake-languagetool/actions/workflows/test.yml/badge.svg)](https://github.com/emacs-languagetool/flymake-languagetool/actions/workflows/test.yml)
@@ -21,6 +22,7 @@ The instruction to use this plugin.
 2. Consider adding one of the following snippets to your configuration.
 
 #### Local LanguageTool Server
+
 ```el
 (use-package flymake-languagetool
   :ensure t
@@ -35,6 +37,7 @@ The instruction to use this plugin.
 ```
 
 #### Free LanguageTool Account
+
 ```el
 (use-package flymake-languagetool
   :ensure t
@@ -49,6 +52,7 @@ The instruction to use this plugin.
 ```
 
 #### Premium LanguageTool Account
+
 ```el
 (use-package flymake-languagetool
   :ensure t
@@ -77,7 +81,16 @@ included in `flymake-languagetool-active-modes`.
 
 ## 🧪 Configuration
 
+### Sentence Awareness
+
+`flymake-languagetool` now uses emacs sentence navigation to send only portions
+of the text that have been modified rather than the entire buffer. In order for
+this to behave in an expected manner, you may have to modify
+`sentence-end-double-space`. The default is set to `true` and may cause some
+contextual issues if you only use a single space to separate sentences.
+
 ### Language
+
 The language used for flymake can be customized by using
 `flymake-languagetool-language` (Default `"en-US"`)
 
