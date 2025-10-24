@@ -416,8 +416,8 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
 (defun flymake-languagetool--checker (report-fn &rest _args)
   "Diagnostic checker function with REPORT-FN."
   (setq flymake-languagetool--source-buffer (current-buffer))
-  (let ((text (buffer-substring-no-properties
-               (point-min) (point-max))))
+  (let ((text (url-hexify-string (buffer-substring-no-properties
+               (point-min) (point-max)))))
     (cond
      ((flymake-languagetool--reachable-p)
       (flymake-languagetool--check report-fn text))
