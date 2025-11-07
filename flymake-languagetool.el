@@ -35,9 +35,24 @@
 (require 'seq)
 (eval-when-compile
   (require 'cl-lib))
-(require 'json)
 (require 'url)
 (require 'flymake)
+
+;; Either use the built-in JSON support or import the `json' library, defining a
+;; compatibility function so we can use the best supported JSON parser.
+(defalias 'flymake-languagetool--parse-json
+  (if (and (fboundp 'json-parse-string)
+           (fboundp 'json-available-p)
+           (json-available-p))
+      (lambda (string)
+        "Parse a json STRING."
+        (json-parse-string string
+                           :array-type 'list
+                           :object-type 'alist
+                           :false-object :json-false
+                           :null-object nil))
+    (require 'json)
+    'json-read-string))
 
 ;; Dynamically bound.
 (defvar url-http-end-of-headers)
@@ -56,8 +71,21 @@
   :group 'flymake-languagetool)
 
 (defcustom flymake-languagetool-ignore-faces-alist
-  '((org-mode . (org-code org-block))
+  '((org-mode . (org-code org-verbatim
+                          org-block font-lock-comment-face
+                          org-block-begin-line org-block-end-line
+                          org-special-keyword org-table org-tag))
+    (message-mode . (message-header-cc
+                     message-header-to
+                     message-header-other
+                     message-mml
+                     message-cited-text
+                     message-cited-text-1
+                     message-cited-text-2
+                     message-cited-text-3
+                     message-cited-text-4))
     (markdown-mode . (markdown-code-face
+                      markdown-markup-face
                       markdown-inline-code-face markdown-pre-face
                       markdown-url-face markdown-plain-url-face
                       markdown-math-face markdown-html-tag-name-face
@@ -193,9 +221,6 @@ These rules will be enabled if `flymake-languagetool-check-spelling' is non-nil.
   :safe #'booleanp
   :group 'flymake-languagetool)
 
-(defvar-local flymake-languagetool--source-buffer nil
-  "Current buffer we are currently using for grammar check.")
-
 (defvar-local flymake-languagetool--proc-buf nil
   "Current process we are currently using for grammar check.")
 
@@ -252,42 +277,64 @@ See https://languagetool.org/development/api/org/languagetool/rules/Categories.h
                                                   faces-to-ignore)
   "Return non-nil if faces at POS in SRC-BUF intersect FACES-TO-IGNORE."
   (let ((x (get-text-property pos 'face src-buf)))
-    (seq-intersection faces-to-ignore (ensure-list x))))
+    (cl-loop
+     for face in (ensure-list x)
+     when (memq face faces-to-ignore)
+     return t)))
+
+(defun flymake-languagetool--ignored-faces ()
+  "Return the faces that should be ignored in the current buffer."
+  (cl-loop
+   for (mode . faces) in flymake-languagetool-ignore-faces-alist
+   when (derived-mode-p mode)
+   append (ensure-list faces)))
+
+(defun flymake-languagetool--pos-to-point (buf offset pos)
+  "Search forward in BUF for the specified text position POS from OFFSET.
+This function correctly handles emoji which count as two characters."
+  (let (case-fold-search)
+    (with-current-buffer buf
+      (save-excursion
+        (setq pos (+ offset pos))
+        (goto-char offset)
+        ;; code points in the "supplementary place" use two code units
+        (while (and (< (point) pos)
+                    (re-search-forward (rx (any (#x010000 .  #x10ffff))) pos t))
+          (setq pos (1- pos)))
+        pos))))
 
 (defun flymake-languagetool--check-all (errors source-buffer)
   "Check grammar ERRORS for SOURCE-BUFFER document."
-  (let ((faces (alist-get (buffer-local-value 'major-mode source-buffer)
-                          flymake-languagetool-ignore-faces-alist))
+  (let ((faces (with-current-buffer source-buffer
+                 (flymake-languagetool--ignored-faces)))
         check-list)
     (dolist (error errors)
       (let-alist error
-        (unless (and faces (flymake-languagetool--ignore-at-pos-p
-                            (+ .offset (point-min))
-                            source-buffer faces))
-          (push (flymake-make-diagnostic
-                 source-buffer
-                 (+ .offset (point-min))
-                 (+ .offset .length (point-min))
-                 (if flymake-languagetool-use-categories
-                     (map-elt flymake-languagetool-category-map
-                              .rule.category.id)
-                   :warning)
-                 (concat .message " [LanguageTool]")
-                 ;; add text property for suggested replacements
-                 `((suggestions . (,@(seq-map (lambda (rep)
-                                                (car (map-values rep)))
-                                              .replacements)))
-                   (rule-id . ,.rule.id)
-                   (rule-desc . ,.rule.description)
-                   (type . ,.rule.issueType)
-                   (category . ,.rule.category.id)))
-                check-list))))
+        (let* ((beg (flymake-languagetool--pos-to-point source-buffer (point-min) .offset))
+               (end (flymake-languagetool--pos-to-point source-buffer beg .length)))
+          (unless (and faces (flymake-languagetool--ignore-at-pos-p beg source-buffer faces))
+            (push (flymake-make-diagnostic
+                   source-buffer
+                   beg end
+                   (if flymake-languagetool-use-categories
+                       (map-elt flymake-languagetool-category-map
+                                .rule.category.id)
+                     :warning)
+                   (concat .message " [LanguageTool]")
+                   ;; add text property for suggested replacements
+                   `((suggestions . (,@(seq-map (lambda (rep)
+                                                  (car (map-values rep)))
+                                                .replacements)))
+                     (rule-id . ,.rule.id)
+                     (rule-desc . ,.rule.description)
+                     (type . ,.rule.issueType)
+                     (category . ,.rule.category.id)))
+                  check-list)))))
     check-list))
 
 (defun flymake-languagetool--output-to-errors (output source-buffer)
   "Parse the JSON data from OUTPUT of LanguageTool analysis of SOURCE-BUFFER."
-  (let* ((json-array-type 'list)
-         (full-results (json-read-from-string output))
+  (let* ((full-results (flymake-languagetool--parse-json output))
          (errors (cdr (assoc 'matches full-results))))
     (flymake-languagetool--check-all errors source-buffer)))
 
@@ -328,10 +375,10 @@ STATUS provided from `url-retrieve'."
 (defun flymake-languagetool--check (report-fn text)
   "Run LanguageTool on TEXT from current buffer's contento.
 The callback function will reply with REPORT-FN."
-  (when-let ((buf flymake-languagetool--proc-buf))
+  (when-let* ((buf flymake-languagetool--proc-buf))
     ;; need to check if buffer has ongoing process or else we may
     ;; potentially delete the wrong one.
-    (when-let ((process (get-buffer-process buf)))
+    (when-let* ((process (get-buffer-process buf)))
       (delete-process process))
     (setf flymake-languagetool--proc-buf nil))
   ;; Correctly %-encode query parameters.
@@ -422,7 +469,6 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
 
 (defun flymake-languagetool--checker (report-fn &rest _args)
   "Diagnostic checker function with REPORT-FN."
-  (setq flymake-languagetool--source-buffer (current-buffer))
   (let ((text (buffer-substring-no-properties
                (point-min) (point-max))))
     (cond
@@ -553,8 +599,8 @@ Depending on TYPE, either ignore Rule ID or Category ID."
   "Correct `flymake-languagetool' diagnostic at point.
 Use OL as diagnostic if non-nil."
   (interactive)
-  (if-let (flymake-languagetool-current-cand
-           (or ol (flymake-languagetool--ov-at-point)))
+  (if-let* ((flymake-languagetool-current-cand
+             (or ol (flymake-languagetool--ov-at-point))))
       (condition-case nil
           (when-let*
               ((ov flymake-languagetool-current-cand)
@@ -602,7 +648,7 @@ Use OL as diagnostic if non-nil."
 (defun flymake-languagetool-correct-dwim ()
   "DWIM function for correcting `flymake-languagetool' diagnostics."
   (interactive)
-  (if-let ((ov (flymake-languagetool--ov-at-point)))
+  (if-let* ((ov (flymake-languagetool--ov-at-point)))
       (funcall #'flymake-languagetool-correct-at-point ov)
     (funcall-interactively #'flymake-languagetool-correct)))
 
