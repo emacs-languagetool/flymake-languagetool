@@ -334,6 +334,13 @@ The callback function will reply with REPORT-FN."
     (when-let ((process (get-buffer-process buf)))
       (delete-process process))
     (setf flymake-languagetool--proc-buf nil))
+  ;; Correctly %-encode query parameters.
+  ;; See https://github.com/emacs-languagetool/flymake-languagetool/pull/34
+  ;; and https://debbugs.gnu.org/cgi/bugreport.cgi?bug=78984
+  ;;
+  ;; Fixed in Emacs 31.
+  (when (< emacs-major-version 31)
+    (setq text (url-hexify-string text)))
   (let* ((url-request-method "POST")
          (url-request-extra-headers
           '(("Content-Type" . "application/x-www-form-urlencoded")))
@@ -416,8 +423,8 @@ Once started call `flymake-languagetool' checker with REPORT-FN."
 (defun flymake-languagetool--checker (report-fn &rest _args)
   "Diagnostic checker function with REPORT-FN."
   (setq flymake-languagetool--source-buffer (current-buffer))
-  (let ((text (url-hexify-string (buffer-substring-no-properties
-               (point-min) (point-max)))))
+  (let ((text (buffer-substring-no-properties
+               (point-min) (point-max))))
     (cond
      ((flymake-languagetool--reachable-p)
       (flymake-languagetool--check report-fn text))
